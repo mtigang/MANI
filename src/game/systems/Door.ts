@@ -6,14 +6,13 @@ export class Door {
   private isOpen = false
   private targetAngle = 0
   private currentAngle = 0
-  private openSpeed = 3.2
-  interactionDistance = 2.8
+  private openSpeed = 3.5
+  interactionDistance = 3.0
   position: THREE.Vector3
 
-  constructor(scene: THREE.Scene, x: number, y: number, z: number, height = 2.4) {
+  constructor(scene: THREE.Scene, x: number, y: number, z: number, height = 2.5) {
     this.position = new THREE.Vector3(x, y, z)
     this.hinge = new THREE.Group()
-    // Hinge on left, door swings outward (toward +Z / outside) when negative rotation
     this.hinge.position.set(x - 0.6, y, z)
 
     const doorMat = new THREE.MeshStandardMaterial({
@@ -46,7 +45,6 @@ export class Door {
 
   toggle() {
     this.isOpen = !this.isOpen
-    // Open outward (positive Z side) so player can walk out
     this.targetAngle = this.isOpen ? Math.PI / 2 : 0
   }
 
@@ -54,7 +52,6 @@ export class Door {
     return this.isOpen
   }
 
-  /** Fully open enough to walk through */
   get isFullyOpen() {
     return this.isOpen && Math.abs(this.currentAngle - this.targetAngle) < 0.08
   }
@@ -72,13 +69,14 @@ export class Door {
   }
 
   getCollisionAABB() {
-    // Only block when mostly closed
-    if (this.isOpen && Math.abs(this.currentAngle) > 0.5) return null
+    // No collision once door is opening past ~25°
+    if (this.isOpen && Math.abs(this.currentAngle) > 0.4) return null
+    if (!this.isOpen && Math.abs(this.currentAngle) > 0.4) return null
     return {
-      minX: this.position.x - 0.55,
-      maxX: this.position.x + 0.55,
-      minZ: this.position.z - 0.12,
-      maxZ: this.position.z + 0.12
+      minX: this.position.x - 0.5,
+      maxX: this.position.x + 0.5,
+      minZ: this.position.z - 0.1,
+      maxZ: this.position.z + 0.1
     }
   }
 }

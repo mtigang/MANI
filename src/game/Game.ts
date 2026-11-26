@@ -322,8 +322,12 @@ export class Game {
     const wallT = 0.2
 
     this.addWall(0, wallH / 2, -4, 8.2, wallH, wallT, wallMat)
-    this.addWall(-2.85, wallH / 2, 4, 2.3, wallH, wallT, wallMat)
-    this.addWall(2.85, wallH / 2, 4, 2.3, wallH, wallT, wallMat)
+    // Front walls with clear door gap |x| < 0.75 (door width ~1.2)
+    this.addBox(-2.9, wallH / 2, 4, 2.4, wallH, wallT, wallMat)
+    this.addCollider(-2.9, 4, 1.15, 0.12) // maxX ≈ -1.75
+    this.addBox(2.9, wallH / 2, 4, 2.4, wallH, wallT, wallMat)
+    this.addCollider(2.9, 4, 1.15, 0.12)  // minX ≈ 1.75
+    // Door clear zone: x from -1.75 to 1.75 at z=4
     this.addWall(-4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
     this.addWall(4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
 
@@ -556,28 +560,20 @@ export class Game {
   }
 
   private createWorldBounds() {
-    // Invisible walls so player cannot leave the playable area
-    // Between houses / off the street
+    // Invisible walls – MUST NOT block the house interior or the door opening at z≈4, x≈0
     const walls: Array<[number, number, number, number]> = [
-      // Outer left
-      [-28, 10, 1.5, 20],
-      // Outer right (past police)
-      [22, 10, 1.5, 20],
-      // Behind opposite buildings
-      [0, 22, 35, 1.5],
-      // Behind our house / block going into void -Z past room
-      [0, -6, 20, 1.5],
-      // Front of opposite buildings street edge barriers at alley gaps handled by building colliders
-      // Block going through between our-side buildings into void at z < -1 outside room
-      [-12, -2, 8, 1.2],
-      [12, -2, 8, 1.2],
-      // Block north-south alleys between dense houses on our side
-      [-8, 1.5, 1.2, 4],
-      [-3, 1.5, 1.2, 4],
-      [3, 1.5, 1.2, 4],
-      [8, 1.5, 1.2, 4],
-      // Keep player mostly on street + sidewalk after exit
-      [0, 3.2, 22, 0.8], // thin barrier just outside door area? skip - allow sidewalk
+      // Map edges
+      [-28, 10, 1.5, 22],
+      [24, 10, 1.5, 22],
+      // Far side of street (behind opposite buildings)
+      [0, 22, 40, 1.5],
+      // Far behind our house (outside room, z < -4)
+      [0, -7, 16, 1.0],
+      // Side alleys OUTSIDE the house footprint only (x clearly outside |x|>4.5, z around street)
+      [-10, 8, 2.0, 6],
+      [10, 8, 2.0, 6],
+      [-16, 2, 3.0, 4],
+      [16, 2, 3.0, 4],
     ]
     for (const [x, z, hw, hd] of walls) {
       this.addCollider(x, z, hw, hd)
