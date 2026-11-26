@@ -6,39 +6,38 @@ export class Door {
   private isOpen = false
   private targetAngle = 0
   private currentAngle = 0
-  private openSpeed = 2.8
-  interactionDistance = 2.6
+  private openSpeed = 3.2
+  interactionDistance = 2.8
   position: THREE.Vector3
 
-  constructor(scene: THREE.Scene, x: number, y: number, z: number) {
+  constructor(scene: THREE.Scene, x: number, y: number, z: number, height = 2.4) {
     this.position = new THREE.Vector3(x, y, z)
     this.hinge = new THREE.Group()
-    this.hinge.position.set(x - 0.55, y, z) // hinge on left side of door
+    // Hinge on left, door swings outward (toward +Z / outside) when negative rotation
+    this.hinge.position.set(x - 0.6, y, z)
 
     const doorMat = new THREE.MeshStandardMaterial({
       color: 0x5c3a22,
       roughness: 0.65,
       metalness: 0.05
     })
-    const doorGeo = new THREE.BoxGeometry(1.1, 2.2, 0.08)
-    const doorMesh = new THREE.Mesh(doorGeo, doorMat)
-    doorMesh.position.set(0.55, 1.1, 0) // offset so hinge is at edge
+    const doorW = 1.2
+    const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(doorW, height, 0.07), doorMat)
+    doorMesh.position.set(doorW / 2, height / 2, 0)
     doorMesh.castShadow = true
     doorMesh.receiveShadow = true
     this.hinge.add(doorMesh)
 
-    // Simple handle
     const handleMat = new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 0.7, roughness: 0.3 })
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.12, 8), handleMat)
     handle.rotation.z = Math.PI / 2
-    handle.position.set(0.95, 1.05, 0.06)
+    handle.position.set(doorW - 0.15, height * 0.48, 0.05)
     this.hinge.add(handle)
 
     this.mesh = this.hinge
     scene.add(this.hinge)
   }
 
-  /** Returns true if player is close enough to interact */
   canInteract(playerPos: THREE.Vector3): boolean {
     const dx = playerPos.x - this.position.x
     const dz = playerPos.z - this.position.z
@@ -47,11 +46,17 @@ export class Door {
 
   toggle() {
     this.isOpen = !this.isOpen
-    this.targetAngle = this.isOpen ? -Math.PI / 2 : 0
+    // Open outward (positive Z side) so player can walk out
+    this.targetAngle = this.isOpen ? Math.PI / 2 : 0
   }
 
   get isOpened() {
     return this.isOpen
+  }
+
+  /** Fully open enough to walk through */
+  get isFullyOpen() {
+    return this.isOpen && Math.abs(this.currentAngle - this.targetAngle) < 0.08
   }
 
   update(dt: number) {
@@ -66,14 +71,14 @@ export class Door {
     }
   }
 
-  /** Collision box – only active when closed */
   getCollisionAABB() {
-    if (this.isOpen) return null
+    // Only block when mostly closed
+    if (this.isOpen && Math.abs(this.currentAngle) > 0.5) return null
     return {
-      minX: this.position.x - 0.6,
-      maxX: this.position.x + 0.6,
-      minZ: this.position.z - 0.15,
-      maxZ: this.position.z + 0.15
+      minX: this.position.x - 0.55,
+      maxX: this.position.x + 0.55,
+      minZ: this.position.z - 0.12,
+      maxZ: this.position.z + 0.12
     }
   }
 }

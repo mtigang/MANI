@@ -494,3 +494,11 @@
 .intro-video-skip:hover {
   background: rgba(230, 57, 70, 0.5);
 }
+
+.intro-video-loading {
+  position: absolute;
+  color: #ccc;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}

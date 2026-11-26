@@ -3,9 +3,11 @@ import { InputManager } from './systems/InputManager'
 import { PlayerController } from './systems/PlayerController'
 import { resolveAABB, AABB } from './systems/Collision'
 import { Door } from './systems/Door'
+import { createRealisticBed, createRealisticSofa, createRealisticTV, createRealisticWardrobe, createRealisticChair } from './systems/Furniture'
 import { settings } from './core/Settings'
 import { detectDevice } from './core/Device'
 import { audio } from './core/AudioManager'
+import { saveSystem } from './core/SaveSystem'
 import { IntroScreen } from './ui/IntroScreen'
 import { MainMenu } from './ui/MainMenu'
 import { SettingsPanel } from './ui/SettingsPanel'
@@ -45,6 +47,9 @@ export class Game {
   // Siren lights
   private sirenLights: THREE.PointLight[] = []
   private sirenMeshes: THREE.Mesh[] = []
+  private renderingPaused = false
+  private leftHouseSaved = false
+  private streetSaved = false
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -58,11 +63,11 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05
+    this.renderer.toneMappingExposure = 1.15
 
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(0x0a0a18)
-    this.scene.fog = new THREE.FogExp2(0x0a0a18, 0.014)
+    this.scene.background = new THREE.Color(0x151528)
+    this.scene.fog = new THREE.FogExp2(0x151528, 0.011)
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200)
 
@@ -85,6 +90,7 @@ export class Game {
   private buildUI() {
     this.intro = new IntroScreen(this.uiRoot, () => this.goToMenu())
     this.menu = new MainMenu(this.uiRoot, {
+      onContinue: () => this.continueGame(),
       onStart: () => this.startGame(),
       onSettings: () => this.goToSettings(),
       onExit: () => this.handleExit()
@@ -92,7 +98,7 @@ export class Game {
     this.settingsPanel = new SettingsPanel(this.uiRoot, () => this.goToMenu())
     this.hud = new InGameHUD(this.uiRoot, () => this.togglePause())
     this.orientation = new OrientationGate(this.uiRoot)
-    this.introVideo = new IntroVideo(this.uiRoot, () => this.afterIntroVideo())
+    this.introVideo = new IntroVideo(this.uiRoot, () => this.afterIntroVideo(), () => { this.renderingPaused = true })
   }
 
   private goToMenu() {
@@ -125,12 +131,48 @@ export class Game {
   }
 
   private afterIntroVideo() {
+    this.renderingPaused = false
     this.state = 'playing'
     this.hud.show()
     this.input.setEnabled(true)
     this.player.sitAt(-2.2, -2.35, Math.PI * 0.15)
     this.player.setGroundY(0)
     this.showStandHint()
+    saveSystem.save({
+      checkpoint: 'start',
+      position: { x: -2.2, y: 1.05, z: -2.35 },
+      yaw: Math.PI * 0.15,
+      completed: { introSeen: true, leftHouse: false, reachedStreet: false }
+    })
+  }
+
+  private continueGame() {
+    if (this.orientation.isBlocking()) return
+    const s = saveSystem.load()
+    if (!s) {
+      this.startGame()
+      return
+    }
+    this.menu.hide()
+    this.settingsPanel.hide()
+    this.intro.hide()
+    this.hidePauseOverlay()
+    this.renderingPaused = false
+    this.state = 'playing'
+    this.hud.show()
+    this.input.setEnabled(true)
+    this.player.sitting = false
+    this.player.position.set(s.position.x, s.position.y, s.position.z)
+    this.player.yaw = s.yaw
+    this.player.pitch = 0
+    this.player.setGroundY(0)
+    this.hideStandHint()
+    this.leftHouseSaved = s.completed.leftHouse
+    this.streetSaved = s.completed.reachedStreet
+    if (s.completed.leftHouse) {
+      // Door should be open if already left
+      if (!this.door.isOpened) this.door.toggle()
+    }
   }
 
   private handleExit() {
@@ -228,10 +270,10 @@ export class Game {
 
   async init() {
     // Brighter lighting
-    const ambient = new THREE.AmbientLight(0x3a4060, 0.35)
+    const ambient = new THREE.AmbientLight(0x4a5080, 0.5)
     this.scene.add(ambient)
 
-    const dir = new THREE.DirectionalLight(0x8899bb, 0.45)
+    const dir = new THREE.DirectionalLight(0xa0b0d0, 0.55)
     dir.position.set(10, 20, 8)
     dir.castShadow = true
     dir.shadow.mapSize.set(this.device === 'mobile' ? 1024 : 2048, this.device === 'mobile' ? 1024 : 2048)
@@ -244,7 +286,7 @@ export class Game {
     dir.shadow.bias = -0.0003
     this.scene.add(dir)
 
-    const hemi = new THREE.HemisphereLight(0x2a3050, 0x1a1520, 0.3)
+    const hemi = new THREE.HemisphereLight(0x3a4568, 0x2a2030, 0.4)
     this.scene.add(hemi)
 
     this.createRoom()
@@ -272,16 +314,16 @@ export class Game {
     const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf0e8dc, roughness: 0.92, metalness: 0 })
     const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(8.1, 8.1), ceilMat)
     ceiling.rotation.x = Math.PI / 2
-    ceiling.position.y = 3.15
+    ceiling.position.y = 4.2
     this.scene.add(ceiling)
 
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xd4c4b0, roughness: 0.9, metalness: 0.02 })
-    const wallH = 3.15
+    const wallH = 4.2
     const wallT = 0.2
 
     this.addWall(0, wallH / 2, -4, 8.2, wallH, wallT, wallMat)
-    this.addWall(-2.65, wallH / 2, 4, 2.7, wallH, wallT, wallMat)
-    this.addWall(2.65, wallH / 2, 4, 2.7, wallH, wallT, wallMat)
+    this.addWall(-2.85, wallH / 2, 4, 2.3, wallH, wallT, wallMat)
+    this.addWall(2.85, wallH / 2, 4, 2.3, wallH, wallT, wallMat)
     this.addWall(-4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
     this.addWall(4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
 
@@ -291,43 +333,26 @@ export class Game {
     this.addBox(0.7, 1.15, 3.95, 0.18, 2.3, 0.22, frameMat)
     this.addBox(0, 2.35, 3.95, 1.6, 0.18, 0.22, frameMat)
 
-    // === Bed ===
+    // === Realistic furniture ===
+    createRealisticBed(this.scene, -2.2, -2.4)
+    this.addCollider(-2.2, -2.4, 1.2, 0.85)
+
+    createRealisticSofa(this.scene, 2.3, 1.5)
+    this.addCollider(2.3, 1.5, 1.15, 0.55)
+
+    createRealisticTV(this.scene, 2.4, -2.85)
+    this.addCollider(2.4, -2.85, 0.9, 0.4)
+
+    createRealisticWardrobe(this.scene, -3.2, 2.2)
+    this.addCollider(-3.2, 2.2, 0.7, 0.4)
+
     const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.6 })
-    this.addBox(-2.2, 0.18, -2.4, 2.2, 0.36, 1.4, wood)
-    this.addCollider(-2.2, -2.4, 1.2, 0.8)
-    const sheet = new THREE.MeshStandardMaterial({ color: 0xe8e0d4, roughness: 0.85 })
-    this.addBox(-2.2, 0.42, -2.4, 2.05, 0.1, 1.25, sheet)
-    const pillow = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 })
-    this.addBox(-2.7, 0.52, -2.4, 0.45, 0.14, 0.7, pillow)
-
-    // === Sofa ===
-    const sofaMat = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.75 })
-    this.addBox(2.3, 0.28, 1.5, 2.0, 0.4, 0.85, sofaMat)
-    this.addBox(2.3, 0.7, 1.85, 2.0, 0.55, 0.18, sofaMat) // back
-    this.addBox(1.4, 0.55, 1.5, 0.18, 0.35, 0.85, sofaMat)
-    this.addBox(3.2, 0.55, 1.5, 0.18, 0.35, 0.85, sofaMat)
-    this.addCollider(2.3, 1.5, 1.1, 0.55)
-
-    // === TV stand + TV ===
-    const darkWood = new THREE.MeshStandardMaterial({ color: 0x2a2218, roughness: 0.55 })
-    this.addBox(2.4, 0.3, -2.8, 1.5, 0.5, 0.45, darkWood)
-    this.addCollider(2.4, -2.8, 0.85, 0.35)
-    // TV screen (stable emissive – no flicker)
-    const tvMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2030,
-      emissive: 0x1a3050,
-      emissiveIntensity: 0.35,
-      roughness: 0.3
-    })
-    this.addBox(2.4, 0.95, -2.85, 1.3, 0.75, 0.08, tvMat)
-    // TV frame
-    this.addBox(2.4, 0.95, -2.88, 1.4, 0.85, 0.05, new THREE.MeshStandardMaterial({ color: 0x111114 }))
-
-    // === Desk ===
+    // Desk
     this.addBox(-0.3, 0.4, -3.2, 1.4, 0.08, 0.6, wood)
     this.addBox(-0.9, 0.2, -3.2, 0.07, 0.4, 0.07, wood)
     this.addBox(0.3, 0.2, -3.2, 0.07, 0.4, 0.07, wood)
     this.addCollider(-0.3, -3.2, 0.8, 0.4)
+    createRealisticChair(this.scene, -0.3, -2.5, Math.PI)
 
     // === Window (stable, no flicker) ===
     const glassMat = new THREE.MeshStandardMaterial({
@@ -351,7 +376,7 @@ export class Game {
 
     // === Chandelier ===
     const chrome = new THREE.MeshStandardMaterial({ color: 0xd0c8a0, metalness: 0.7, roughness: 0.3 })
-    this.addBox(0, 2.95, 0, 0.08, 0.25, 0.08, chrome)
+    this.addBox(0, 3.95, 0, 0.08, 0.25, 0.08, chrome)
     const chandelier = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 12, 12),
       new THREE.MeshStandardMaterial({
@@ -361,10 +386,10 @@ export class Game {
         roughness: 0.4
       })
     )
-    chandelier.position.set(0, 2.7, 0)
+    chandelier.position.set(0, 3.7, 0)
     this.scene.add(chandelier)
     const chandelierLight = new THREE.PointLight(0xfff0d0, 1.4, 12, 1.6)
-    chandelierLight.position.set(0, 2.55, 0)
+    chandelierLight.position.set(0, 3.55, 0)
     chandelierLight.castShadow = this.device !== 'mobile'
     this.scene.add(chandelierLight)
 
@@ -560,7 +585,7 @@ export class Game {
   }
 
   private createDoor() {
-    this.door = new Door(this.scene, 0, 0, 4.0)
+    this.door = new Door(this.scene, 0, 0, 4.0, 2.5)
   }
 
   private createFlag() {
@@ -578,14 +603,14 @@ export class Game {
           side: THREE.DoubleSide
         })
         const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), flagMat)
-        flag.position.set(0, 2.05, -3.88)
+        flag.position.set(0, 2.4, -3.88)
         this.scene.add(flag)
         const rod = new THREE.Mesh(
           new THREE.CylinderGeometry(0.02, 0.02, 1.6, 8),
           new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.5 })
         )
         rod.rotation.z = Math.PI / 2
-        rod.position.set(0, 2.58, -3.88)
+        rod.position.set(0, 2.95, -3.88)
         this.scene.add(rod)
       },
       undefined,
@@ -625,6 +650,7 @@ export class Game {
   private animate = () => {
     if (!this.running) return
     requestAnimationFrame(this.animate)
+    if (this.renderingPaused) return
     const dt = Math.min(this.clock.getDelta(), 0.05)
     const t = this.clock.elapsedTime
 
@@ -664,6 +690,28 @@ export class Game {
         } else {
           this.hideInteractHint()
         }
+      }
+
+      // Auto-save checkpoints
+      const pz = this.player.position.z
+      const px = this.player.position.x
+      if (!this.leftHouseSaved && pz > 5.0) {
+        this.leftHouseSaved = true
+        saveSystem.save({
+          checkpoint: 'left_house',
+          position: { x: px, y: this.player.position.y, z: pz },
+          yaw: this.player.yaw,
+          completed: { introSeen: true, leftHouse: true, reachedStreet: false }
+        })
+      }
+      if (!this.streetSaved && pz > 8.5) {
+        this.streetSaved = true
+        saveSystem.save({
+          checkpoint: 'street',
+          position: { x: px, y: this.player.position.y, z: pz },
+          yaw: this.player.yaw,
+          completed: { introSeen: true, leftHouse: true, reachedStreet: true }
+        })
       }
 
       this.player.applyToCamera(this.camera)
