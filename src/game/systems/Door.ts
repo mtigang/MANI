@@ -7,7 +7,7 @@ export class Door {
   private targetAngle = 0
   private currentAngle = 0
   private openSpeed = 2.8
-  interactionDistance = 2.4
+  interactionDistance = 2.6
   position: THREE.Vector3
 
   constructor(scene: THREE.Scene, x: number, y: number, z: number) {
