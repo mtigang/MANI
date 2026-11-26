@@ -81,8 +81,8 @@ export class InputManager {
 
     document.addEventListener('mousemove', e => {
       if (this.enabled && this.pointerLocked) {
-        this.state.lookX += e.movementX * 0.0022
-        this.state.lookY += e.movementY * 0.0022
+        this.state.lookX += e.movementX * 0.0016
+        this.state.lookY += e.movementY * 0.0016
         // clamp pitch
         this.state.lookY = Math.max(-1.25, Math.min(1.25, this.state.lookY))
       }
