@@ -403,7 +403,7 @@ export class Game {
 
       // Interaction
       if (this.door.canInteract(this.player.position)) {
-        const label = this.door.isOpened ? '[E] بستن در' : '[E] باز کردن در'
+        const label = this.door.isOpened ? 'E  ·  بستن در' : 'E  ·  باز کردن در'
         this.showInteractHint(label)
         if (this.input.consumeInteract()) {
           this.door.toggle()
