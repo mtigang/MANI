@@ -20,13 +20,21 @@
   background: transparent;
 }
 
-.mani-ui.hidden { display: none !important; }
+.mani-ui {
+  transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+.mani-ui.hidden {
+  display: flex !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none !important;
+}
 
 /* ---- Intro ---- */
 .intro-screen {
   width: 100%;
   height: 100%;
-  background: radial-gradient(ellipse at 50% 40%, #2a1a22 0%, #16141c 45%, #0e0e14 100%);
+  background: radial-gradient(ellipse at 50% 42%, #3d2a35 0%, #1e1a28 50%, #14121c 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -155,7 +163,7 @@
 .main-menu {
   width: 100%;
   height: 100%;
-  background: radial-gradient(ellipse at 45% 25%, #2a1820 0%, #14141c 50%, #0c0c12 100%);
+  background: radial-gradient(ellipse at 45% 28%, #3a2430 0%, #1c1824 50%, #121018 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -229,7 +237,7 @@
 .settings-panel {
   width: 100%;
   height: 100%;
-  background: radial-gradient(ellipse at 60% 10%, #241820 0%, #12121a 55%, #0c0c12 100%);
+  background: radial-gradient(ellipse at 60% 12%, #322028 0%, #1a1620 55%, #121018 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
