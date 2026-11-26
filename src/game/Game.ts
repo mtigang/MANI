@@ -11,6 +11,7 @@ import { MainMenu } from './ui/MainMenu'
 import { SettingsPanel } from './ui/SettingsPanel'
 import { InGameHUD } from './ui/InGameHUD'
 import { OrientationGate } from './ui/OrientationGate'
+import { IntroVideo } from './ui/IntroVideo'
 import './ui/ui.css'
 
 type GameState = 'intro' | 'menu' | 'settings' | 'playing' | 'paused'
@@ -30,6 +31,7 @@ export class Game {
   private settingsPanel!: SettingsPanel
   private hud!: InGameHUD
   private orientation!: OrientationGate
+  private introVideo!: IntroVideo
   private uiRoot: HTMLElement
   private pauseOverlay: HTMLDivElement | null = null
   private interactHint: HTMLDivElement | null = null
@@ -56,11 +58,11 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.25
+    this.renderer.toneMappingExposure = 1.05
 
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(0x2a2535)
-    this.scene.fog = new THREE.FogExp2(0x2a2535, 0.012)
+    this.scene.background = new THREE.Color(0x0a0a18)
+    this.scene.fog = new THREE.FogExp2(0x0a0a18, 0.014)
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200)
 
@@ -90,6 +92,7 @@ export class Game {
     this.settingsPanel = new SettingsPanel(this.uiRoot, () => this.goToMenu())
     this.hud = new InGameHUD(this.uiRoot, () => this.togglePause())
     this.orientation = new OrientationGate(this.uiRoot)
+    this.introVideo = new IntroVideo(this.uiRoot, () => this.afterIntroVideo())
   }
 
   private goToMenu() {
@@ -112,14 +115,19 @@ export class Game {
 
   private startGame() {
     if (this.orientation.isBlocking()) return
-    this.state = 'playing'
     this.menu.hide()
     this.settingsPanel.hide()
     this.intro.hide()
     this.hidePauseOverlay()
+    this.input.setEnabled(false)
+    // Play intro video then enter game
+    this.introVideo.play()
+  }
+
+  private afterIntroVideo() {
+    this.state = 'playing'
     this.hud.show()
     this.input.setEnabled(true)
-    // Sit on bed
     this.player.sitAt(-2.2, -2.35, Math.PI * 0.15)
     this.player.setGroundY(0)
     this.showStandHint()
@@ -220,10 +228,10 @@ export class Game {
 
   async init() {
     // Brighter lighting
-    const ambient = new THREE.AmbientLight(0x6a6080, 0.55)
+    const ambient = new THREE.AmbientLight(0x3a4060, 0.35)
     this.scene.add(ambient)
 
-    const dir = new THREE.DirectionalLight(0xfff0d8, 1.0)
+    const dir = new THREE.DirectionalLight(0x8899bb, 0.45)
     dir.position.set(10, 20, 8)
     dir.castShadow = true
     dir.shadow.mapSize.set(this.device === 'mobile' ? 1024 : 2048, this.device === 'mobile' ? 1024 : 2048)
@@ -236,7 +244,7 @@ export class Game {
     dir.shadow.bias = -0.0003
     this.scene.add(dir)
 
-    const hemi = new THREE.HemisphereLight(0xb0c4e0, 0x4a3a30, 0.45)
+    const hemi = new THREE.HemisphereLight(0x2a3050, 0x1a1520, 0.3)
     this.scene.add(hemi)
 
     this.createRoom()
@@ -244,6 +252,8 @@ export class Game {
     this.createDoor()
     this.createFlag()
     this.createPoliceBlockade()
+    this.createStars()
+    this.createWorldBounds()
 
     this.player.position.set(0, 1.6, 1.2)
     this.input.setEnabled(false)
@@ -364,37 +374,30 @@ export class Game {
     this.scene.add(lampLight)
   }
 
+
   private createStreet() {
-    // Street along X (left → right), building faces Z-
-    const streetMat = new THREE.MeshStandardMaterial({ color: 0x3e3e42, roughness: 0.9, metalness: 0.06 })
-    const street = new THREE.Mesh(new THREE.PlaneGeometry(70, 18), streetMat)
+    // Wider street extending further left (negative X) and right
+    const streetMat = new THREE.MeshStandardMaterial({ color: 0x2e2e32, roughness: 0.92, metalness: 0.06 })
+    const street = new THREE.Mesh(new THREE.PlaneGeometry(90, 18), streetMat)
     street.rotation.x = -Math.PI / 2
-    street.position.set(5, 0, 10)
+    street.position.set(0, 0, 10)
     street.receiveShadow = true
     this.scene.add(street)
 
-    // Sidewalk in front of our building
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0x6e6a64, roughness: 0.85 })
-    this.addBox(0, 0.05, 5.8, 16, 0.1, 3.2, sideMat)
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.85 })
+    this.addBox(0, 0.05, 5.8, 20, 0.1, 3.2, sideMat)
 
-    // Dense continuous row of buildings – same side (behind player / +Z relative to street)
-    const colors = [0x8a7a6a, 0x6a5a50, 0x7a6a5a, 0x5a4a42, 0x9a8a78]
-    // Our house is around z≈0; street centers at z=10, buildings on far side z≈16–18 and near side
-    // Buildings on the opposite side of the street (dense)
-    for (let i = -4; i <= 5; i++) {
+    const colors = [0x6a5a4a, 0x4a3a35, 0x5a4a40, 0x3a3028, 0x7a6a58]
+
+    // Opposite side dense buildings
+    for (let i = -6; i <= 6; i++) {
       const x = i * 5.2
       const h = 4.5 + (Math.abs(i) % 3) * 1.2
-      const mat = new THREE.MeshStandardMaterial({
-        color: colors[(i + 4) % colors.length],
-        roughness: 0.82
-      })
+      const mat = new THREE.MeshStandardMaterial({ color: colors[(i + 6) % colors.length], roughness: 0.85 })
       this.addBox(x, h / 2, 17, 5.0, h, 5.5, mat)
       this.addCollider(x, 17, 2.6, 2.9)
-      // Windows
       const winMat = new THREE.MeshStandardMaterial({
-        color: 0x1a2230,
-        emissive: 0x223344,
-        emissiveIntensity: 0.35 + (i % 2) * 0.2
+        color: 0x1a2230, emissive: 0x334455, emissiveIntensity: 0.45 + (i % 2) * 0.2
       })
       for (let wy = 1.3; wy < h - 0.7; wy += 1.5) {
         this.addBox(x - 1.2, wy, 14.2, 0.9, 0.85, 0.08, winMat)
@@ -402,85 +405,158 @@ export class Game {
       }
     }
 
-    // Buildings on our side of the street (left and right of our house), stuck together
-    for (let i = -3; i <= 3; i++) {
-      if (i === 0) continue // our house gap
+    // Our side buildings (dense, gap only for our house)
+    for (let i = -5; i <= 5; i++) {
+      if (i === 0) continue
       const x = i * 5.5
       const h = 3.5 + (Math.abs(i) % 2) * 1.5
-      const mat = new THREE.MeshStandardMaterial({
-        color: colors[(i + 5) % colors.length],
-        roughness: 0.85
-      })
+      const mat = new THREE.MeshStandardMaterial({ color: colors[(i + 5) % colors.length], roughness: 0.85 })
       this.addBox(x, h / 2, 1.5, 5.2, h, 6, mat)
       this.addCollider(x, 1.5, 2.7, 3.1)
     }
 
-    // Road markings along X
-    const markMat = new THREE.MeshStandardMaterial({ color: 0xd0c890, roughness: 0.9 })
-    for (let i = -5; i <= 6; i++) {
+    // Road markings
+    const markMat = new THREE.MeshStandardMaterial({ color: 0xa09860, roughness: 0.9 })
+    for (let i = -7; i <= 7; i++) {
       this.addBox(i * 5.5, 0.03, 10, 2.0, 0.02, 0.3, markMat)
     }
 
-    // Street lights
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.5, roughness: 0.45 })
-    for (let i = -3; i <= 4; i++) {
+    // Street lights with glowing bulbs
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.5, roughness: 0.45 })
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xffe8b0, emissive: 0xffcc66, emissiveIntensity: 1.2, roughness: 0.3
+    })
+    for (let i = -4; i <= 5; i++) {
       const x = i * 8
       this.addBox(x, 2.3, 7.2, 0.1, 4.6, 0.1, poleMat)
-      const pl = new THREE.PointLight(0xffe8b0, 1.1, 12, 1.7)
-      pl.position.set(x, 4.5, 7.2)
+      // Arm
+      this.addBox(x + 0.35, 4.5, 7.2, 0.7, 0.06, 0.06, poleMat)
+      // Bulb
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), bulbMat)
+      bulb.position.set(x + 0.65, 4.4, 7.2)
+      this.scene.add(bulb)
+      const pl = new THREE.PointLight(0xffe0a0, 1.6, 14, 1.6)
+      pl.position.set(x + 0.65, 4.3, 7.2)
       this.scene.add(pl)
     }
   }
 
   private createPoliceBlockade() {
-    // Police car blocking the right side of the street (positive X)
+    // Tilted police car blocking the right side of the street
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.45, metalness: 0.3 })
     const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, roughness: 0.5 })
+    const glass = new THREE.MeshStandardMaterial({ color: 0x223344, transparent: true, opacity: 0.6, roughness: 0.2 })
 
-    // Car body
-    this.addBox(12, 0.55, 10, 4.2, 0.7, 1.9, bodyMat)
-    this.addBox(12, 1.15, 10, 2.4, 0.65, 1.7, whiteMat)
-    // Windows
-    const glass = new THREE.MeshStandardMaterial({
-      color: 0x223344,
-      transparent: true,
-      opacity: 0.6,
-      roughness: 0.2
-    })
-    this.addBox(12, 1.2, 10, 2.0, 0.5, 1.75, glass)
+    const car = new THREE.Group()
+    car.position.set(14, 0, 10)
+    car.rotation.y = -0.55 // angled across the road
+    car.rotation.z = 0.04
 
-    // Light bar
-    this.addBox(12, 1.55, 10, 1.6, 0.12, 0.5, new THREE.MeshStandardMaterial({ color: 0x222228 }))
+    const addToCar = (x: number, y: number, z: number, w: number, h: number, d: number, mat: THREE.Material) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+      m.position.set(x, y, z)
+      m.castShadow = true
+      m.receiveShadow = true
+      car.add(m)
+    }
 
-    // Siren lights (animated)
-    const redMat = new THREE.MeshStandardMaterial({
-      color: 0xff0000,
-      emissive: 0xff0000,
-      emissiveIntensity: 1.2
-    })
-    const blueMat = new THREE.MeshStandardMaterial({
-      color: 0x0044ff,
-      emissive: 0x0044ff,
-      emissiveIntensity: 1.2
-    })
+    addToCar(0, 0.55, 0, 4.2, 0.7, 1.9, bodyMat)
+    addToCar(0, 1.15, 0, 2.4, 0.65, 1.7, whiteMat)
+    addToCar(0, 1.2, 0, 2.0, 0.5, 1.75, glass)
+    addToCar(0, 1.55, 0, 1.6, 0.12, 0.5, new THREE.MeshStandardMaterial({ color: 0x222228 }))
+
+    // Wheels
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111114 })
+    for (const [wx, wz] of [[-1.3, 0.85], [-1.3, -0.85], [1.3, 0.85], [1.3, -0.85]]) {
+      addToCar(wx, 0.28, wz, 0.5, 0.5, 0.35, wheelMat)
+    }
+
+    this.scene.add(car)
+
+    // Siren meshes + lights (world space approximate)
+    const redMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.2 })
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x0044ff, emissive: 0x0044ff, emissiveIntensity: 1.2 })
     const redMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.4), redMat)
-    redMesh.position.set(11.5, 1.7, 10)
+    redMesh.position.set(13.3, 1.75, 10.6)
     this.scene.add(redMesh)
     const blueMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.4), blueMat)
-    blueMesh.position.set(12.5, 1.7, 10)
+    blueMesh.position.set(14.5, 1.75, 9.5)
     this.scene.add(blueMesh)
     this.sirenMeshes.push(redMesh, blueMesh)
 
-    const redL = new THREE.PointLight(0xff2200, 2.5, 10, 1.5)
-    redL.position.set(11.5, 1.8, 10)
+    const redL = new THREE.PointLight(0xff2200, 2.8, 12, 1.5)
+    redL.position.set(13.3, 1.9, 10.6)
     this.scene.add(redL)
-    const blueL = new THREE.PointLight(0x2244ff, 2.5, 10, 1.5)
-    blueL.position.set(12.5, 1.8, 10)
+    const blueL = new THREE.PointLight(0x2244ff, 2.8, 12, 1.5)
+    blueL.position.set(14.5, 1.9, 9.5)
     this.scene.add(blueL)
     this.sirenLights.push(redL, blueL)
 
-    // Blockade collider
-    this.addCollider(12, 10, 2.5, 1.5)
+    // Wide collider blocking the road
+    this.addCollider(14, 10, 4.0, 3.5)
+  }
+
+  private createStars() {
+    const count = 600
+    const positions = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.random() * Math.PI * 0.45 // upper hemisphere
+      const r = 40 + Math.random() * 50
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta)
+      positions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) + 8
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    const mat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.18,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    })
+    const stars = new THREE.Points(geo, mat)
+    this.scene.add(stars)
+
+    // Soft moon
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xe8e0c8 })
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), moonMat)
+    moon.position.set(-18, 28, -25)
+    this.scene.add(moon)
+    const moonLight = new THREE.DirectionalLight(0xaabbdd, 0.25)
+    moonLight.position.copy(moon.position)
+    this.scene.add(moonLight)
+  }
+
+  private createWorldBounds() {
+    // Invisible walls so player cannot leave the playable area
+    // Between houses / off the street
+    const walls: Array<[number, number, number, number]> = [
+      // Outer left
+      [-28, 10, 1.5, 20],
+      // Outer right (past police)
+      [22, 10, 1.5, 20],
+      // Behind opposite buildings
+      [0, 22, 35, 1.5],
+      // Behind our house / block going into void -Z past room
+      [0, -6, 20, 1.5],
+      // Front of opposite buildings street edge barriers at alley gaps handled by building colliders
+      // Block going through between our-side buildings into void at z < -1 outside room
+      [-12, -2, 8, 1.2],
+      [12, -2, 8, 1.2],
+      // Block north-south alleys between dense houses on our side
+      [-8, 1.5, 1.2, 4],
+      [-3, 1.5, 1.2, 4],
+      [3, 1.5, 1.2, 4],
+      [8, 1.5, 1.2, 4],
+      // Keep player mostly on street + sidewalk after exit
+      [0, 3.2, 22, 0.8], // thin barrier just outside door area? skip - allow sidewalk
+    ]
+    for (const [x, z, hw, hd] of walls) {
+      this.addCollider(x, z, hw, hd)
+    }
   }
 
   private createDoor() {
@@ -622,6 +698,7 @@ export class Game {
     this.settingsPanel.destroy()
     this.hud.destroy()
     this.orientation.destroy()
+    this.introVideo.destroy()
     this.hidePauseOverlay()
     this.hideInteractHint()
     this.hideStandHint()
