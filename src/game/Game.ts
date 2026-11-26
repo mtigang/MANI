@@ -63,11 +63,11 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.15
+    this.renderer.toneMappingExposure = 1.35
 
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(0x151528)
-    this.scene.fog = new THREE.FogExp2(0x151528, 0.011)
+    this.scene.background = new THREE.Color(0x1a1a32)
+    this.scene.fog = new THREE.FogExp2(0x1a1a32, 0.008)
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200)
 
@@ -135,12 +135,12 @@ export class Game {
     this.state = 'playing'
     this.hud.show()
     this.input.setEnabled(true)
-    this.player.sitAt(-2.2, -2.35, Math.PI * 0.15)
+    this.player.sitAt(-3.5, -3.4, Math.PI * 0.15)
     this.player.setGroundY(0)
     this.showStandHint()
     saveSystem.save({
       checkpoint: 'start',
-      position: { x: -2.2, y: 1.05, z: -2.35 },
+      position: { x: -3.5, y: 1.05, z: -3.4 },
       yaw: Math.PI * 0.15,
       completed: { introSeen: true, leftHouse: false, reachedStreet: false }
     })
@@ -270,10 +270,10 @@ export class Game {
 
   async init() {
     // Brighter lighting
-    const ambient = new THREE.AmbientLight(0x4a5080, 0.5)
+    const ambient = new THREE.AmbientLight(0x6a7090, 0.65)
     this.scene.add(ambient)
 
-    const dir = new THREE.DirectionalLight(0xa0b0d0, 0.55)
+    const dir = new THREE.DirectionalLight(0xc0d0e8, 0.7)
     dir.position.set(10, 20, 8)
     dir.castShadow = true
     dir.shadow.mapSize.set(this.device === 'mobile' ? 1024 : 2048, this.device === 'mobile' ? 1024 : 2048)
@@ -286,7 +286,7 @@ export class Game {
     dir.shadow.bias = -0.0003
     this.scene.add(dir)
 
-    const hemi = new THREE.HemisphereLight(0x3a4568, 0x2a2030, 0.4)
+    const hemi = new THREE.HemisphereLight(0x5a6a90, 0x3a3040, 0.5)
     this.scene.add(hemi)
 
     this.createRoom()
@@ -301,120 +301,176 @@ export class Game {
     this.input.setEnabled(false)
   }
 
+
   private createRoom() {
-    // Floor wood
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.72, metalness: 0.04 })
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), floorMat)
+    // Larger house ~12 x 12
+    const roomSize = 12
+    const half = roomSize / 2
+
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.7, metalness: 0.04 })
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomSize, roomSize), floorMat)
     floor.rotation.x = -Math.PI / 2
     floor.position.set(0, 0.01, 0)
     floor.receiveShadow = true
     this.scene.add(floor)
 
-    // Natural ceiling (slight warm off-white, not pure flat)
-    const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf0e8dc, roughness: 0.92, metalness: 0 })
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(8.1, 8.1), ceilMat)
+    const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf5eee4, roughness: 0.9 })
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(roomSize + 0.2, roomSize + 0.2), ceilMat)
     ceiling.rotation.x = Math.PI / 2
     ceiling.position.y = 4.2
     this.scene.add(ceiling)
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0xd4c4b0, roughness: 0.9, metalness: 0.02 })
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xe0d4c4, roughness: 0.88, metalness: 0.02 })
     const wallH = 4.2
-    const wallT = 0.2
+    const wallT = 0.22
 
-    this.addWall(0, wallH / 2, -4, 8.2, wallH, wallT, wallMat)
-    // Front walls with clear door gap |x| < 0.75 (door width ~1.2)
-    this.addBox(-2.9, wallH / 2, 4, 2.4, wallH, wallT, wallMat)
-    this.addCollider(-2.9, 4, 1.15, 0.12) // maxX ≈ -1.75
-    this.addBox(2.9, wallH / 2, 4, 2.4, wallH, wallT, wallMat)
-    this.addCollider(2.9, 4, 1.15, 0.12)  // minX ≈ 1.75
-    // Door clear zone: x from -1.75 to 1.75 at z=4
-    this.addWall(-4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
-    this.addWall(4, wallH / 2, 0, wallT, wallH, 8.2, wallMat)
+    // Back / sides
+    this.addWall(0, wallH / 2, -half, roomSize + 0.3, wallH, wallT, wallMat)
+    this.addWall(-half, wallH / 2, 0, wallT, wallH, roomSize + 0.3, wallMat)
+    this.addWall(half, wallH / 2, 0, wallT, wallH, roomSize + 0.3, wallMat)
+    // Front with door gap |x| < 0.85
+    this.addBox(-3.5, wallH / 2, half, 5.0, wallH, wallT, wallMat)
+    this.addCollider(-3.5, half, 2.4, 0.14)
+    this.addBox(3.5, wallH / 2, half, 5.0, wallH, wallT, wallMat)
+    this.addCollider(3.5, half, 2.4, 0.14)
 
-    // Door frame (solid, no black gap)
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x4a3224, roughness: 0.55 })
-    this.addBox(-0.7, 1.15, 3.95, 0.18, 2.3, 0.22, frameMat)
-    this.addBox(0.7, 1.15, 3.95, 0.18, 2.3, 0.22, frameMat)
-    this.addBox(0, 2.35, 3.95, 1.6, 0.18, 0.22, frameMat)
+    this.addBox(-0.75, 1.25, half - 0.05, 0.18, 2.5, 0.22, frameMat)
+    this.addBox(0.75, 1.25, half - 0.05, 0.18, 2.5, 0.22, frameMat)
+    this.addBox(0, 2.55, half - 0.05, 1.7, 0.18, 0.22, frameMat)
 
-    // === Realistic furniture ===
-    createRealisticBed(this.scene, -2.2, -2.4)
-    this.addCollider(-2.2, -2.4, 1.2, 0.85)
+    // Living area – sofa facing TV
+    createRealisticSofa(this.scene, 3.2, 1.5)
+    this.addCollider(3.2, 1.5, 1.15, 0.55)
+    createRealisticTV(this.scene, 3.2, -4.5)
+    this.addCollider(3.2, -4.5, 0.9, 0.4)
+    this.addNewsScreen(3.2, 0.95, -4.42)
 
-    createRealisticSofa(this.scene, 2.3, 1.5)
-    this.addCollider(2.3, 1.5, 1.15, 0.55)
+    // Bedroom corner
+    createRealisticBed(this.scene, -3.5, -3.5)
+    this.addCollider(-3.5, -3.5, 1.2, 0.85)
+    createRealisticWardrobe(this.scene, -5.0, -1.0)
+    this.addCollider(-5.0, -1.0, 0.7, 0.4)
 
-    createRealisticTV(this.scene, 2.4, -2.85)
-    this.addCollider(2.4, -2.85, 0.9, 0.4)
-
-    createRealisticWardrobe(this.scene, -3.2, 2.2)
-    this.addCollider(-3.2, 2.2, 0.7, 0.4)
-
+    // Desk + chair
     const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.6 })
-    // Desk
-    this.addBox(-0.3, 0.4, -3.2, 1.4, 0.08, 0.6, wood)
-    this.addBox(-0.9, 0.2, -3.2, 0.07, 0.4, 0.07, wood)
-    this.addBox(0.3, 0.2, -3.2, 0.07, 0.4, 0.07, wood)
-    this.addCollider(-0.3, -3.2, 0.8, 0.4)
-    createRealisticChair(this.scene, -0.3, -2.5, Math.PI)
+    this.addBox(-3.5, 0.4, 3.5, 1.4, 0.08, 0.6, wood)
+    this.addBox(-4.1, 0.2, 3.5, 0.07, 0.4, 0.07, wood)
+    this.addBox(-2.9, 0.2, 3.5, 0.07, 0.4, 0.07, wood)
+    this.addCollider(-3.5, 3.5, 0.8, 0.4)
+    createRealisticChair(this.scene, -3.5, 2.8, 0)
 
-    // === Window (stable, no flicker) ===
+    // === Kitchen (left-front) ===
+    this.createKitchen(-4.2, 4.2)
+
+    // Window
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x88aacc,
-      roughness: 0.25,
-      metalness: 0.05,
-      emissive: 0x335566,
-      emissiveIntensity: 0.15,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false
+      color: 0x88aacc, roughness: 0.25, metalness: 0.05,
+      emissive: 0x445566, emissiveIntensity: 0.2, transparent: true, opacity: 0.5, depthWrite: false
     })
-    this.addBox(-3.92, 1.65, -0.8, 0.06, 1.3, 1.6, glassMat)
-    // Window frame
-    const wframe = new THREE.MeshStandardMaterial({ color: 0xeee8e0, roughness: 0.7 })
-    this.addBox(-3.9, 1.65, -0.8, 0.08, 1.4, 0.06, wframe)
-    this.addBox(-3.9, 1.65, -1.55, 0.08, 1.4, 0.06, wframe)
-    this.addBox(-3.9, 1.65, -0.05, 0.08, 1.4, 0.06, wframe)
-    this.addBox(-3.9, 2.3, -0.8, 0.08, 0.06, 1.6, wframe)
-    this.addBox(-3.9, 1.0, -0.8, 0.08, 0.06, 1.6, wframe)
+    this.addBox(-half + 0.08, 1.8, -1.5, 0.06, 1.4, 2.2, glassMat)
 
-    // === Chandelier ===
-    const chrome = new THREE.MeshStandardMaterial({ color: 0xd0c8a0, metalness: 0.7, roughness: 0.3 })
+    // Ceiling lamp – strong actual illumination
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xd8d0b0, metalness: 0.65, roughness: 0.3 })
     this.addBox(0, 3.95, 0, 0.08, 0.25, 0.08, chrome)
-    const chandelier = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 12, 12),
-      new THREE.MeshStandardMaterial({
-        color: 0xfff5e0,
-        emissive: 0xffe8b0,
-        emissiveIntensity: 0.8,
-        roughness: 0.4
-      })
+    const bulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 14, 14),
+      new THREE.MeshStandardMaterial({ color: 0xfff6e0, emissive: 0xffe8b0, emissiveIntensity: 1.4, roughness: 0.35 })
     )
-    chandelier.position.set(0, 3.7, 0)
-    this.scene.add(chandelier)
-    const chandelierLight = new THREE.PointLight(0xfff0d0, 1.4, 12, 1.6)
-    chandelierLight.position.set(0, 3.55, 0)
-    chandelierLight.castShadow = this.device !== 'mobile'
-    this.scene.add(chandelierLight)
+    bulb.position.set(0, 3.65, 0)
+    this.scene.add(bulb)
+    const mainLight = new THREE.PointLight(0xfff2dc, 2.8, 18, 1.2)
+    mainLight.position.set(0, 3.5, 0)
+    mainLight.castShadow = true
+    this.scene.add(mainLight)
+    // Secondary fill so corners are lit
+    const fill = new THREE.PointLight(0xffe8c8, 1.2, 14, 1.5)
+    fill.position.set(3, 3.2, -2)
+    this.scene.add(fill)
+    const fill2 = new THREE.PointLight(0xffe8c8, 1.0, 12, 1.5)
+    fill2.position.set(-3, 3.2, 2)
+    this.scene.add(fill2)
+  }
 
-    // Desk lamp
-    const lampLight = new THREE.PointLight(0xffcc88, 0.7, 6, 1.8)
-    lampLight.position.set(-0.3, 1.1, -3.0)
-    this.scene.add(lampLight)
+  private createKitchen(cx: number, cz: number) {
+    const counter = new THREE.MeshStandardMaterial({ color: 0xd8d0c4, roughness: 0.55 })
+    const cabinet = new THREE.MeshStandardMaterial({ color: 0x6a5040, roughness: 0.6 })
+    const steel = new THREE.MeshStandardMaterial({ color: 0xb0b8c0, metalness: 0.65, roughness: 0.3 })
+    // Counter L-shape
+    this.addBox(cx, 0.45, cz, 2.8, 0.9, 0.65, cabinet)
+    this.addCollider(cx, cz, 1.5, 0.4)
+    this.addBox(cx, 0.92, cz, 2.8, 0.06, 0.68, counter)
+    // Upper cabinets
+    this.addBox(cx, 2.4, cz - 0.1, 2.8, 0.7, 0.4, cabinet)
+    // Sink
+    this.addBox(cx - 0.6, 0.95, cz + 0.05, 0.5, 0.08, 0.4, steel)
+    // Stove
+    this.addBox(cx + 0.7, 0.96, cz + 0.05, 0.55, 0.05, 0.45, steel)
+    for (const ox of [-0.12, 0.12]) {
+      for (const oz of [-0.1, 0.1]) {
+        const burner = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.08, 0.03, 12),
+          new THREE.MeshStandardMaterial({ color: 0x222228 })
+        )
+        burner.position.set(cx + 0.7 + ox, 1.0, cz + 0.05 + oz)
+        this.scene.add(burner)
+      }
+    }
+    // Fridge
+    this.addBox(cx - 1.8, 1.0, cz + 0.9, 0.7, 2.0, 0.7, steel)
+    this.addCollider(cx - 1.8, cz + 0.9, 0.45, 0.45)
+  }
+
+  private addNewsScreen(x: number, y: number, z: number) {
+    // Procedural "شبکه خبر" style screen
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 288
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#0a1a30'
+    ctx.fillRect(0, 0, 512, 288)
+    ctx.fillStyle = '#c41e3a'
+    ctx.fillRect(0, 0, 512, 42)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 28px Tahoma, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('شبکه خبر', 256, 30)
+    ctx.fillStyle = '#1a3050'
+    ctx.fillRect(20, 60, 300, 180)
+    ctx.fillStyle = '#2a5080'
+    ctx.fillRect(340, 60, 150, 80)
+    ctx.fillStyle = '#e8e8f0'
+    ctx.font = '18px Tahoma, sans-serif'
+    ctx.fillText('اخبار ساعت ۲۱', 256, 270)
+    ctx.fillStyle = '#8899aa'
+    ctx.font = '14px Tahoma, sans-serif'
+    ctx.fillText('IRINN', 410, 105)
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.55,
+      roughness: 0.35
+    })
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.7), mat)
+    screen.position.set(x, y, z)
+    this.scene.add(screen)
   }
 
 
   private createStreet() {
     // Wider street extending further left (negative X) and right
     const streetMat = new THREE.MeshStandardMaterial({ color: 0x2e2e32, roughness: 0.92, metalness: 0.06 })
-    const street = new THREE.Mesh(new THREE.PlaneGeometry(90, 18), streetMat)
+    const street = new THREE.Mesh(new THREE.PlaneGeometry(120, 20), streetMat)
     street.rotation.x = -Math.PI / 2
-    street.position.set(0, 0, 10)
+    street.position.set(-10, 0, 11)
     street.receiveShadow = true
     this.scene.add(street)
 
     const sideMat = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.85 })
-    this.addBox(0, 0.05, 5.8, 20, 0.1, 3.2, sideMat)
+    this.addBox(0, 0.05, 7.8, 28, 0.1, 3.5, sideMat)
 
     const colors = [0x6a5a4a, 0x4a3a35, 0x5a4a40, 0x3a3028, 0x7a6a58]
 
@@ -436,12 +492,12 @@ export class Game {
 
     // Our side buildings (dense, gap only for our house)
     for (let i = -5; i <= 5; i++) {
-      if (i === 0) continue
+      if (Math.abs(i) <= 1) continue
       const x = i * 5.5
       const h = 3.5 + (Math.abs(i) % 2) * 1.5
       const mat = new THREE.MeshStandardMaterial({ color: colors[(i + 5) % colors.length], roughness: 0.85 })
-      this.addBox(x, h / 2, 1.5, 5.2, h, 6, mat)
-      this.addCollider(x, 1.5, 2.7, 3.1)
+      this.addBox(x, h / 2, 0.5, 5.2, h, 5, mat)
+      this.addCollider(x, 0.5, 2.7, 2.6)
     }
 
     // Road markings
@@ -450,79 +506,42 @@ export class Game {
       this.addBox(i * 5.5, 0.03, 10, 2.0, 0.02, 0.3, markMat)
     }
 
-    // Street lights with glowing bulbs
+    // Street lights – warm glow that actually lights the road
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.5, roughness: 0.45 })
     const bulbMat = new THREE.MeshStandardMaterial({
-      color: 0xffe8b0, emissive: 0xffcc66, emissiveIntensity: 1.2, roughness: 0.3
+      color: 0xffe8b0, emissive: 0xffd080, emissiveIntensity: 2.0, roughness: 0.25
     })
-    for (let i = -4; i <= 5; i++) {
-      const x = i * 8
-      this.addBox(x, 2.3, 7.2, 0.1, 4.6, 0.1, poleMat)
-      // Arm
-      this.addBox(x + 0.35, 4.5, 7.2, 0.7, 0.06, 0.06, poleMat)
-      // Bulb
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), bulbMat)
-      bulb.position.set(x + 0.65, 4.4, 7.2)
+    for (let i = -6; i <= 5; i++) {
+      const x = i * 7
+      this.addBox(x, 2.4, 7.5, 0.12, 4.8, 0.12, poleMat)
+      this.addBox(x + 0.4, 4.7, 7.5, 0.85, 0.07, 0.07, poleMat)
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), bulbMat)
+      bulb.position.set(x + 0.75, 4.55, 7.5)
       this.scene.add(bulb)
-      const pl = new THREE.PointLight(0xffe0a0, 1.6, 14, 1.6)
-      pl.position.set(x + 0.65, 4.3, 7.2)
+      // Stronger lights to illuminate street naturally
+      const pl = new THREE.PointLight(0xffe2b0, 2.4, 18, 1.3)
+      pl.position.set(x + 0.75, 4.4, 7.5)
       this.scene.add(pl)
+      // Soft ground bounce feel
+      const pl2 = new THREE.PointLight(0xffd8a0, 0.7, 10, 1.8)
+      pl2.position.set(x + 0.75, 1.5, 9)
+      this.scene.add(pl2)
     }
   }
 
+
   private createPoliceBlockade() {
-    // Tilted police car blocking the right side of the street
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.45, metalness: 0.3 })
-    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, roughness: 0.5 })
-    const glass = new THREE.MeshStandardMaterial({ color: 0x223344, transparent: true, opacity: 0.6, roughness: 0.2 })
-
-    const car = new THREE.Group()
-    car.position.set(14, 0, 10)
-    car.rotation.y = -0.55 // angled across the road
-    car.rotation.z = 0.04
-
-    const addToCar = (x: number, y: number, z: number, w: number, h: number, d: number, mat: THREE.Material) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
-      m.position.set(x, y, z)
-      m.castShadow = true
-      m.receiveShadow = true
-      car.add(m)
-    }
-
-    addToCar(0, 0.55, 0, 4.2, 0.7, 1.9, bodyMat)
-    addToCar(0, 1.15, 0, 2.4, 0.65, 1.7, whiteMat)
-    addToCar(0, 1.2, 0, 2.0, 0.5, 1.75, glass)
-    addToCar(0, 1.55, 0, 1.6, 0.12, 0.5, new THREE.MeshStandardMaterial({ color: 0x222228 }))
-
-    // Wheels
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111114 })
-    for (const [wx, wz] of [[-1.3, 0.85], [-1.3, -0.85], [1.3, 0.85], [1.3, -0.85]]) {
-      addToCar(wx, 0.28, wz, 0.5, 0.5, 0.35, wheelMat)
-    }
-
-    this.scene.add(car)
-
-    // Siren meshes + lights (world space approximate)
-    const redMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.2 })
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x0044ff, emissive: 0x0044ff, emissiveIntensity: 1.2 })
-    const redMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.4), redMat)
-    redMesh.position.set(13.3, 1.75, 10.6)
-    this.scene.add(redMesh)
-    const blueMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.4), blueMat)
-    blueMesh.position.set(14.5, 1.75, 9.5)
-    this.scene.add(blueMesh)
-    this.sirenMeshes.push(redMesh, blueMesh)
-
-    const redL = new THREE.PointLight(0xff2200, 2.8, 12, 1.5)
-    redL.position.set(13.3, 1.9, 10.6)
-    this.scene.add(redL)
-    const blueL = new THREE.PointLight(0x2244ff, 2.8, 12, 1.5)
-    blueL.position.set(14.5, 1.9, 9.5)
-    this.scene.add(blueL)
-    this.sirenLights.push(redL, blueL)
-
-    // Wide collider blocking the road
-    this.addCollider(14, 10, 4.0, 3.5)
+    // Iranian police Samand angled to fully block the RIGHT side of the street
+    createPoliceSamand(this.scene, 13, 10, -1.05)
+    // Two NAJA-style officers in front of the car
+    createPoliceOfficer(this.scene, 10.5, 9.2, Math.PI * 0.85)
+    createPoliceOfficer(this.scene, 11.2, 11.0, Math.PI * 1.1)
+    const sirens = createSirenLights(this.scene, 13, 1.75, 10)
+    this.sirenMeshes.push(...sirens.meshes)
+    this.sirenLights.push(...sirens.lights)
+    // Wide collider blocking right road
+    this.addCollider(13, 10, 5.0, 4.0)
+    this.addCollider(11, 10, 2.5, 3.5)
   }
 
   private createStars() {
@@ -559,21 +578,14 @@ export class Game {
     this.scene.add(moonLight)
   }
 
+
   private createWorldBounds() {
-    // Invisible walls – MUST NOT block the house interior or the door opening at z≈4, x≈0
+    // Only outer map edges – do NOT block left street travel
     const walls: Array<[number, number, number, number]> = [
-      // Map edges
-      [-28, 10, 1.5, 22],
-      [24, 10, 1.5, 22],
-      // Far side of street (behind opposite buildings)
-      [0, 22, 40, 1.5],
-      // Far behind our house (outside room, z < -4)
-      [0, -7, 16, 1.0],
-      // Side alleys OUTSIDE the house footprint only (x clearly outside |x|>4.5, z around street)
-      [-10, 8, 2.0, 6],
-      [10, 8, 2.0, 6],
-      [-16, 2, 3.0, 4],
-      [16, 2, 3.0, 4],
+      [-40, 10, 1.5, 24],   // far left outer
+      [28, 10, 1.5, 24],    // far right (past police)
+      [0, 24, 45, 1.5],     // behind opposite buildings
+      [0, -8, 18, 1.0],     // behind house
     ]
     for (const [x, z, hw, hd] of walls) {
       this.addCollider(x, z, hw, hd)
@@ -581,7 +593,7 @@ export class Game {
   }
 
   private createDoor() {
-    this.door = new Door(this.scene, 0, 0, 4.0, 2.5)
+    this.door = new Door(this.scene, 0, 0, 6.0, 2.5)
   }
 
   private createFlag() {
@@ -599,14 +611,14 @@ export class Game {
           side: THREE.DoubleSide
         })
         const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), flagMat)
-        flag.position.set(0, 2.4, -3.88)
+        flag.position.set(0, 2.5, -5.88)
         this.scene.add(flag)
         const rod = new THREE.Mesh(
           new THREE.CylinderGeometry(0.02, 0.02, 1.6, 8),
           new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.5 })
         )
         rod.rotation.z = Math.PI / 2
-        rod.position.set(0, 2.95, -3.88)
+        rod.position.set(0, 3.05, -5.88)
         this.scene.add(rod)
       },
       undefined,
@@ -691,7 +703,7 @@ export class Game {
       // Auto-save checkpoints
       const pz = this.player.position.z
       const px = this.player.position.x
-      if (!this.leftHouseSaved && pz > 5.0) {
+      if (!this.leftHouseSaved && pz > 7.0) {
         this.leftHouseSaved = true
         saveSystem.save({
           checkpoint: 'left_house',
@@ -700,7 +712,7 @@ export class Game {
           completed: { introSeen: true, leftHouse: true, reachedStreet: false }
         })
       }
-      if (!this.streetSaved && pz > 8.5) {
+      if (!this.streetSaved && pz > 10.0) {
         this.streetSaved = true
         saveSystem.save({
           checkpoint: 'street',
