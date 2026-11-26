@@ -9,13 +9,18 @@ export class PlayerController {
   speed = 4
   runMultiplier = 1.8
   height = 1.6
+  private sensitivity = 1.0
 
   constructor(private input: InputManager) {}
 
+  setSensitivity(s: number) {
+    this.sensitivity = Math.max(0.2, Math.min(2, s))
+  }
+
   update(dt: number) {
     this.input.update()
-    this.yaw -= this.input.state.lookX
-    this.pitch -= this.input.state.lookY
+    this.yaw -= this.input.state.lookX * this.sensitivity
+    this.pitch -= this.input.state.lookY * this.sensitivity
     this.input.state.lookX = 0
     this.input.state.lookY = 0
 

@@ -18,15 +18,23 @@ export class InputManager {
   private keys = new Set<string>()
   private pointerLocked = false
   private isMobile = false
+  private enabled = false
 
   constructor(private canvas: HTMLCanvasElement) {
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0
     this.bindDesktop()
-    if (this.isMobile) this.bindMobile()
+  }
+
+  setEnabled(v: boolean) {
+    this.enabled = v
+    if (!v && document.pointerLockElement === this.canvas) {
+      document.exitPointerLock()
+    }
   }
 
   private bindDesktop() {
     window.addEventListener('keydown', e => {
+      if (!this.enabled) return
       this.keys.add(e.code)
       if (e.code === 'Escape') this.state.pause = true
       if (e.code === 'KeyE') this.state.interact = true
@@ -36,13 +44,13 @@ export class InputManager {
       if (e.code === 'KeyE') this.state.interact = false
     })
     this.canvas.addEventListener('click', () => {
-      if (!this.isMobile) this.canvas.requestPointerLock()
+      if (this.enabled && !this.isMobile) this.canvas.requestPointerLock()
     })
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.canvas
     })
     document.addEventListener('mousemove', e => {
-      if (this.pointerLocked) {
+      if (this.enabled && this.pointerLocked) {
         this.state.lookX += e.movementX * 0.002
         this.state.lookY += e.movementY * 0.002
         this.state.lookY = Math.max(-1.2, Math.min(1.2, this.state.lookY))
@@ -50,11 +58,13 @@ export class InputManager {
     })
   }
 
-  private bindMobile() {
-    // Placeholder – virtual joystick & buttons will be added in UI phase
-  }
-
   update() {
+    if (!this.enabled) {
+      this.state.forward = 0
+      this.state.right = 0
+      this.state.run = false
+      return
+    }
     this.state.forward = 0
     this.state.right = 0
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) this.state.forward += 1

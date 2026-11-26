@@ -9,11 +9,11 @@ async function bootstrap() {
     const game = new Game(canvas)
     await game.init()
     loading.style.opacity = '0'
-    setTimeout(() => loading.remove(), 500)
+    setTimeout(() => loading.remove(), 450)
     game.start()
   } catch (err) {
     console.error('Failed to start MANI:', err)
-    loading.innerHTML = `<p style="color:#e63946">خطا در بارگذاری بازی</p><pre>${String(err)}</pre>`
+    loading.innerHTML = `<p style="color:#e63946">خطا در بارگذاری بازی</p><pre style="color:#aaa;font-size:12px;max-width:90vw;overflow:auto">${String(err)}</pre>`
   }
 }
 
