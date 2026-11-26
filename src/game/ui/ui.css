@@ -317,3 +317,97 @@
   background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
   z-index: 1;
 }
+
+/* ========== In-Game HUD ========== */
+.in-game-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 150;
+}
+
+.in-game-hud.hidden {
+  display: none !important;
+}
+
+.hud-menu-btn {
+  pointer-events: auto;
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(10, 10, 18, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #f0f0f5;
+  font-family: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.hud-menu-btn:hover,
+.hud-menu-btn:focus-visible {
+  background: rgba(230, 57, 70, 0.25);
+  border-color: rgba(230, 57, 70, 0.55);
+  box-shadow: 0 4px 28px rgba(230, 57, 70, 0.25);
+  transform: translateY(-1px);
+}
+
+.hud-menu-btn:active {
+  transform: scale(0.96);
+}
+
+.hud-menu-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 18px;
+}
+
+.hud-menu-icon span {
+  display: block;
+  height: 2px;
+  background: #f0f0f5;
+  border-radius: 1px;
+  transition: all 0.2s ease;
+}
+
+.hud-menu-btn:hover .hud-menu-icon span:nth-child(1) {
+  width: 100%;
+  background: #e63946;
+}
+.hud-menu-btn:hover .hud-menu-icon span:nth-child(2) {
+  width: 70%;
+  background: #e63946;
+}
+.hud-menu-btn:hover .hud-menu-icon span:nth-child(3) {
+  width: 85%;
+  background: #e63946;
+}
+
+.hud-menu-label {
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+@media (max-width: 480px) {
+  .hud-menu-btn {
+    top: 12px;
+    left: 12px;
+    padding: 9px 12px 9px 10px;
+  }
+  .hud-menu-label {
+    display: none;
+  }
+}
