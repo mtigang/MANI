@@ -1,9 +1,7 @@
 import { settings, GameSettings } from './Settings'
 
-/**
- * Web-Audio ambient + procedural SFX (no large external files).
- * Works offline under GitHub Pages.
- */
+export type FootSurface = 'wood' | 'ceramic' | 'asphalt' | 'sidewalk' | 'concrete'
+
 export class AudioManager {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
@@ -12,6 +10,8 @@ export class AudioManager {
   private ambientStarted = false
   private ambientNodes: AudioNode[] = []
   private footTimer = 0
+  private lastFootVariant = 0
+  private wasMoving = false
 
   constructor() {
     settings.onChange(s => this.applyVolumes(s))
@@ -48,7 +48,6 @@ export class AudioManager {
     if (!this.ctx || !this.musicGain || this.ambientStarted) return
     this.ambientStarted = true
     const t = this.ctx.currentTime
-
     const makeOsc = (type: OscillatorType, freq: number, gain: number) => {
       const o = this.ctx!.createOscillator()
       o.type = type
@@ -61,7 +60,6 @@ export class AudioManager {
       this.ambientNodes.push(o, g)
       return g
     }
-
     makeOsc('sine', 55, 0.18)
     makeOsc('sine', 82.5, 0.1)
     makeOsc('triangle', 165, 0.035)
@@ -89,62 +87,82 @@ export class AudioManager {
     this.ambientStarted = false
   }
 
-  playClick() {
-    this.beep(660, 0.12, 0.12)
-  }
-
+  playClick() { this.beep(660, 0.12, 0.12) }
   playDoor() {
     this.beep(180, 0.25, 0.18, 'triangle')
     setTimeout(() => this.beep(140, 0.2, 0.12, 'triangle'), 80)
   }
-
   playStand() {
     this.beep(220, 0.08, 0.1)
     setTimeout(() => this.beep(280, 0.1, 0.08), 60)
   }
-
   playJump() {
     this.beep(320, 0.08, 0.1, 'square')
     setTimeout(() => this.beep(420, 0.1, 0.07, 'square'), 50)
   }
 
-  /** surface: 'wood' | 'street' */
-  updateFootsteps(dt: number, moving: boolean, running: boolean, surface: 'wood' | 'street') {
+  /** Soft warning voice-like tone when approaching police */
+  playPoliceWarn() {
+    this.beep(340, 0.15, 0.14, 'sawtooth')
+    setTimeout(() => this.beep(280, 0.2, 0.12, 'sawtooth'), 120)
+    setTimeout(() => this.beep(300, 0.25, 0.1, 'triangle'), 280)
+  }
+
+  updateFootsteps(dt: number, moving: boolean, running: boolean, surface: FootSurface) {
     if (!moving) {
       this.footTimer = 0
+      this.wasMoving = false
       return
+    }
+    // Restart phase when starting to move so first step is immediate-ish
+    if (!this.wasMoving) {
+      this.footTimer = 0.08
+      this.wasMoving = true
     }
     this.footTimer -= dt
     if (this.footTimer > 0) return
-    this.footTimer = running ? 0.28 : 0.42
-    this.playFootstep(surface)
+    // Interval depends on speed
+    this.footTimer = running ? 0.30 : 0.48
+    const volScale = running ? 1.15 : 0.85
+    this.playFootstep(surface, volScale)
   }
 
-  private playFootstep(surface: 'wood' | 'street') {
+  private playFootstep(surface: FootSurface, volScale: number) {
     this.ensure()
     if (!this.ctx || !this.sfxGain) return
     if (this.ctx.state === 'suspended') this.ctx.resume()
     const t = this.ctx.currentTime
-    const bufferSize = Math.floor(this.ctx.sampleRate * 0.06)
+    // Vary duration and filter per surface + variant
+    this.lastFootVariant = (this.lastFootVariant + 1 + Math.floor(Math.random() * 2)) % 4
+    const variant = this.lastFootVariant
+
+    const cfg: Record<FootSurface, { dur: number; freq: number; q: number; type: BiquadFilterType; vol: number }> = {
+      wood: { dur: 0.055, freq: 700 + variant * 40, q: 0.9, type: 'bandpass', vol: 0.2 },
+      ceramic: { dur: 0.04, freq: 1200 + variant * 60, q: 1.2, type: 'bandpass', vol: 0.18 },
+      asphalt: { dur: 0.07, freq: 280 + variant * 30, q: 0.6, type: 'lowpass', vol: 0.22 },
+      sidewalk: { dur: 0.06, freq: 450 + variant * 35, q: 0.7, type: 'bandpass', vol: 0.2 },
+      concrete: { dur: 0.065, freq: 350 + variant * 25, q: 0.55, type: 'lowpass', vol: 0.21 }
+    }
+    const c = cfg[surface]
+    const bufferSize = Math.floor(this.ctx.sampleRate * c.dur)
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate)
     const data = buffer.getChannelData(0)
+    // Layered noise envelope – less mechanical
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25))
+      const env = Math.exp(-i / (bufferSize * (0.18 + variant * 0.03)))
+      const n = (Math.random() * 2 - 1) * 0.7 + Math.sin(i * (0.3 + variant * 0.05)) * 0.15
+      data[i] = n * env
     }
     const src = this.ctx.createBufferSource()
     src.buffer = buffer
     const filter = this.ctx.createBiquadFilter()
-    if (surface === 'wood') {
-      filter.type = 'bandpass'
-      filter.frequency.value = 800
-      filter.Q.value = 0.8
-    } else {
-      filter.type = 'lowpass'
-      filter.frequency.value = 400
-    }
+    filter.type = c.type
+    filter.frequency.value = c.freq
+    filter.Q.value = c.q
     const g = this.ctx.createGain()
-    g.gain.setValueAtTime(surface === 'wood' ? 0.22 : 0.18, t)
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
+    const vol = c.vol * volScale * (0.85 + Math.random() * 0.3)
+    g.gain.setValueAtTime(vol, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + c.dur + 0.04)
     src.connect(filter)
     filter.connect(g)
     g.connect(this.sfxGain)
