@@ -25,17 +25,12 @@ export class InputManager {
     this.bindDesktop()
   }
 
-  /** Enable gameplay input and try to lock pointer (hide cursor) */
   setEnabled(v: boolean) {
     this.enabled = v
-    if (v) {
-      this.lockPointer()
-    } else {
-      this.unlockPointer()
-    }
+    if (v) this.lockPointer()
+    else this.unlockPointer()
   }
 
-  /** Request pointer lock so cursor disappears and mouse moves the camera */
   lockPointer() {
     if (this.isMobile || !this.enabled) return
     if (document.pointerLockElement !== this.canvas) {
@@ -43,7 +38,6 @@ export class InputManager {
     }
   }
 
-  /** Release pointer lock so cursor becomes visible again */
   unlockPointer() {
     if (document.pointerLockElement === this.canvas) {
       document.exitPointerLock?.()
@@ -57,7 +51,6 @@ export class InputManager {
   private bindDesktop() {
     window.addEventListener('keydown', e => {
       if (!this.enabled) return
-      // Prevent browser from scrolling on Space
       if (e.code === 'Space') e.preventDefault()
       this.keys.add(e.code)
       if (e.code === 'Escape') this.state.pause = true
@@ -67,26 +60,20 @@ export class InputManager {
       this.keys.delete(e.code)
       if (e.code === 'KeyE') this.state.interact = false
     })
-
-    // Click on canvas also re-locks if user clicked away
     this.canvas.addEventListener('click', () => {
       if (this.enabled && !this.isMobile) this.lockPointer()
     })
-
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.canvas
-      // CSS backup: hide system cursor while locked
       this.canvas.style.cursor = this.pointerLocked ? 'none' : 'default'
     })
-
+    // High-rate mouse look – apply immediately, no smoothing lag
     document.addEventListener('mousemove', e => {
       if (this.enabled && this.pointerLocked) {
-        this.state.lookX += e.movementX * 0.0016
-        this.state.lookY += e.movementY * 0.0016
-        // clamp pitch
-        this.state.lookY = Math.max(-1.25, Math.min(1.25, this.state.lookY))
+        this.state.lookX += e.movementX
+        this.state.lookY += e.movementY
       }
-    })
+    }, { passive: true })
   }
 
   update() {

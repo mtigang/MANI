@@ -6,25 +6,26 @@ export class PlayerController {
   velocity = new THREE.Vector3()
   yaw = 0
   pitch = 0
-  speed = 4.0
-  runMultiplier = 1.7
+  speed = 4.2
+  runMultiplier = 1.75
   height = 1.6
   private sensitivity = 1.0
-  private lookSmooth = 0.18
 
-  private gravity = 18
-  private jumpForce = 7.0
+  private gravity = 20
+  private jumpForce = 7.2
   private isGrounded = true
   private groundY = 0
 
-  /** When true, player is sitting – no move, lower camera */
   sitting = false
   private sitHeight = 1.05
+
+  /** pixels-to-radians base scale */
+  private readonly lookScale = 0.0022
 
   constructor(private input: InputManager) {}
 
   setSensitivity(s: number) {
-    this.sensitivity = Math.max(0.25, Math.min(2.2, s))
+    this.sensitivity = Math.max(0.3, Math.min(2.5, s))
   }
 
   setGroundY(y: number) {
@@ -40,19 +41,18 @@ export class PlayerController {
     this.sitting = true
     this.position.set(x, this.groundY + this.sitHeight, z)
     this.yaw = yaw
-    this.pitch = 0.15
+    this.pitch = 0.12
     this.velocity.set(0, 0, 0)
   }
 
   update(dt: number) {
     this.input.update()
 
-    // Smooth mouse look
-    const targetYawDelta = -this.input.state.lookX * this.sensitivity
-    const targetPitchDelta = -this.input.state.lookY * this.sensitivity
-    this.yaw += targetYawDelta
-    this.pitch += targetPitchDelta
-    this.pitch = Math.max(-1.15, Math.min(1.15, this.pitch))
+    // Direct, lag-free look
+    const s = this.lookScale * this.sensitivity
+    this.yaw -= this.input.state.lookX * s
+    this.pitch -= this.input.state.lookY * s
+    this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch))
     this.input.state.lookX = 0
     this.input.state.lookY = 0
 
@@ -79,9 +79,7 @@ export class PlayerController {
       this.isGrounded = false
     }
 
-    if (!this.isGrounded) {
-      this.velocity.y -= this.gravity * dt
-    }
+    if (!this.isGrounded) this.velocity.y -= this.gravity * dt
 
     this.position.x += this.velocity.x * dt
     this.position.z += this.velocity.z * dt
@@ -102,5 +100,13 @@ export class PlayerController {
     camera.rotation.order = 'YXZ'
     camera.rotation.y = this.yaw
     camera.rotation.x = this.pitch
+  }
+
+  get isMoving() {
+    return !this.sitting && (Math.abs(this.velocity.x) + Math.abs(this.velocity.z)) > 0.4
+  }
+
+  get isRunning() {
+    return this.input.state.run && this.isMoving
   }
 }
