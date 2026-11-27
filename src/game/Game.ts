@@ -4,10 +4,11 @@ import { PlayerController } from './systems/PlayerController'
 import { resolveAABB, AABB } from './systems/Collision'
 import { Door } from './systems/Door'
 import { createRealisticBed, createRealisticSofa, createRealisticTV, createRealisticWardrobe, createRealisticChair } from './systems/Furniture'
-import { createPoliceSamand, createPoliceOfficer, createSirenLights } from './systems/Police'
+import { createPoliceSamand, createPoliceOfficer, createSirenLights, updateOfficer, OfficerHandle } from './systems/Police'
+import { addDetailedBuilding } from './systems/Buildings'
 import { settings } from './core/Settings'
 import { detectDevice } from './core/Device'
-import { audio } from './core/AudioManager'
+import { audio, FootSurface } from './core/AudioManager'
 import { saveSystem } from './core/SaveSystem'
 import { IntroScreen } from './ui/IntroScreen'
 import { MainMenu } from './ui/MainMenu'
@@ -48,6 +49,9 @@ export class Game {
   // Siren lights
   private sirenLights: THREE.PointLight[] = []
   private sirenMeshes: THREE.Mesh[] = []
+  private officers: OfficerHandle[] = []
+  private policeWarned = false
+  private policeHint: HTMLDivElement | null = null
   private renderingPaused = false
   private leftHouseSaved = false
   private streetSaved = false
@@ -464,120 +468,145 @@ export class Game {
   }
 
 
+
   private createStreet() {
-    // Wide street + sidewalks both sides
+    // Continuous ground plane – no holes
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a3834, roughness: 0.95 })
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 60), groundMat)
+    ground.rotation.x = -Math.PI / 2
+    ground.position.set(5, -0.02, 12)
+    ground.receiveShadow = true
+    this.scene.add(ground)
+
+    // Wide asphalt street running left–right (X axis)
     const streetMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.92 })
-    const street = new THREE.Mesh(new THREE.PlaneGeometry(70, 16), streetMat)
+    const street = new THREE.Mesh(new THREE.PlaneGeometry(90, 14), streetMat)
     street.rotation.x = -Math.PI / 2
-    street.position.set(0, 0, 14)
+    street.position.set(5, 0.01, 14)
     street.receiveShadow = true
     this.scene.add(street)
 
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0x5c5852, roughness: 0.85 })
-    // Sidewalk near house
-    this.addBox(0, 0.06, 8.2, 40, 0.12, 3.6, sideMat)
-    // Far sidewalk
-    this.addBox(0, 0.06, 20.5, 40, 0.12, 3.0, sideMat)
+    // Sidewalks both sides full length
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0x6a6660, roughness: 0.85 })
+    this.addBox(5, 0.07, 8.5, 90, 0.12, 3.2, sideMat)   // near house
+    this.addBox(5, 0.07, 20.2, 90, 0.12, 3.0, sideMat)  // far side
 
-    // Road markings
+    // Center road dashes
     const markMat = new THREE.MeshStandardMaterial({ color: 0xb0a870, roughness: 0.9 })
-    for (let i = -5; i <= 5; i++) {
-      this.addBox(i * 5, 0.03, 14, 2.2, 0.02, 0.28, markMat)
+    for (let i = -6; i <= 8; i++) {
+      this.addBox(i * 5, 0.04, 14, 2.2, 0.02, 0.28, markMat)
     }
 
-    // Dense tall buildings – opposite side (z high)
-    const colors = [0x6a5a4c, 0x4a4038, 0x5a4e44, 0x3e3830, 0x7a6a5a, 0x554840]
-    for (let i = -5; i <= 5; i++) {
-      const x = i * 5.5
-      const h = 8 + (Math.abs(i) % 4) * 2.2
-      const mat = new THREE.MeshStandardMaterial({ color: colors[(i + 5) % colors.length], roughness: 0.82 })
-      this.addBox(x, h / 2, 24, 5.3, h, 6, mat)
-      this.addCollider(x, 24, 2.7, 3.2)
-      // Windows grid
-      const winMat = new THREE.MeshStandardMaterial({
-        color: 0x1a2230, emissive: 0x3a4a20, emissiveIntensity: 0.25 + (i % 3) * 0.15
-      })
-      for (let wy = 1.5; wy < h - 1; wy += 2.0) {
-        for (const wx of [-1.4, 0, 1.4]) {
-          this.addBox(x + wx, wy, 20.95, 0.7, 0.9, 0.06, winMat)
-        }
-      }
+    // === Opposite side (north) dense buildings – continuous row ===
+    for (let i = -6; i <= 8; i++) {
+      const x = i * 5.6
+      const floors = 3 + (Math.abs(i) % 4)
+      addDetailedBuilding(this.scene, this.colliders, x, 24.5, 5.2, 6.5, floors, i + 3)
     }
 
-    // Our side buildings (taller, leave gap for house)
-    for (let i = -5; i <= 5; i++) {
-      if (Math.abs(i) <= 1) continue
+    // === Our side buildings – continuous except house gap ===
+    for (let i = -6; i <= 8; i++) {
+      if (i >= -1 && i <= 1) continue // player house gap
       const x = i * 5.8
-      const h = 7 + (Math.abs(i) % 3) * 2.5
-      const mat = new THREE.MeshStandardMaterial({ color: colors[(i + 6) % colors.length], roughness: 0.84 })
-      this.addBox(x, h / 2, 1.0, 5.5, h, 7, mat)
-      this.addCollider(x, 1.0, 2.85, 3.6)
-      const winMat = new THREE.MeshStandardMaterial({
-        color: 0x1a2030, emissive: 0x2a3550, emissiveIntensity: 0.3
-      })
-      for (let wy = 1.4; wy < h - 1; wy += 1.9) {
-        this.addBox(x - 1.2, wy, 4.4, 0.75, 0.85, 0.06, winMat)
-        this.addBox(x + 1.2, wy, 4.4, 0.75, 0.85, 0.06, winMat)
-      }
+      const floors = 2 + (Math.abs(i) % 3)
+      addDetailedBuilding(this.scene, this.colliders, x, 0.8, 5.4, 6.5, floors, i + 5)
     }
 
-    // Street lamps BOTH sidewalks – fewer, stronger (perf: max 8 lights)
+    // Fill alley gaps between our house (±6) and neighbors with courtyard walls / small structures
+    // Left neighbor courtyard wall
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x8a7a68, roughness: 0.85 })
+    this.addBox(-8.5, 1.2, 3.5, 0.25, 2.4, 8, wallMat)
+    this.addCollider(-8.5, 3.5, 0.25, 4.2)
+    this.addBox(8.5, 1.2, 3.5, 0.25, 2.4, 8, wallMat)
+    this.addCollider(8.5, 3.5, 0.25, 4.2)
+    // Small yard sheds
+    this.addBox(-7.2, 0.9, 2.0, 2.0, 1.8, 2.5, wallMat)
+    this.addCollider(-7.2, 2.0, 1.1, 1.4)
+    this.addBox(7.2, 0.9, 2.0, 2.0, 1.8, 2.5, wallMat)
+    this.addCollider(7.2, 2.0, 1.1, 1.4)
+
+    // Street lamps both sidewalks (not blocking door at x≈0)
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.5, roughness: 0.45 })
     const bulbMat = new THREE.MeshStandardMaterial({
-      color: 0xffe8b0, emissive: 0xffd080, emissiveIntensity: 2.2, roughness: 0.25
+      color: 0xffe8b0, emissive: 0xffd080, emissiveIntensity: 2.0, roughness: 0.25
     })
-    const lampXs = [-18, -9, 0, 9, 18]
-    for (const x of lampXs) {
-      // Near sidewalk (not in front of door – offset z)
-      const zNear = 7.0
-      if (Math.abs(x) > 3) { // skip center so door exit is clear
-        this.addBox(x, 2.5, zNear, 0.1, 5.0, 0.1, poleMat)
-        this.addBox(x + 0.35, 4.9, zNear, 0.7, 0.06, 0.06, poleMat)
-        const b1 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), bulbMat)
-        b1.position.set(x + 0.6, 4.8, zNear)
-        this.scene.add(b1)
-        const pl = new THREE.PointLight(0xffe2b0, 2.0, 16, 1.4)
-        pl.position.set(x + 0.6, 4.7, zNear)
+    for (const x of [-20, -12, -6, 6, 12, 20, 28]) {
+      for (const [z, side] of [[7.2, 1], [20.0, -1]] as const) {
+        this.addBox(x, 2.5, z, 0.1, 5.0, 0.1, poleMat)
+        this.addBox(x + side * 0.4, 4.9, z, 0.7, 0.06, 0.06, poleMat)
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), bulbMat)
+        bulb.position.set(x + side * 0.65, 4.8, z)
+        this.scene.add(bulb)
+        const pl = new THREE.PointLight(0xffe2b0, 1.7, 14, 1.45)
+        pl.position.set(x + side * 0.65, 4.7, z)
         this.scene.add(pl)
       }
-      // Far sidewalk
-      const zFar = 20.2
-      this.addBox(x, 2.5, zFar, 0.1, 5.0, 0.1, poleMat)
-      this.addBox(x - 0.35, 4.9, zFar, 0.7, 0.06, 0.06, poleMat)
-      const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), bulbMat)
-      b2.position.set(x - 0.6, 4.8, zFar)
-      this.scene.add(b2)
-      const pl2 = new THREE.PointLight(0xffe2b0, 1.8, 14, 1.4)
-      pl2.position.set(x - 0.6, 4.7, zFar)
-      this.scene.add(pl2)
     }
+
+    // LEFT path continues toward crowd gathering (negative X open)
+    this.createCrowdArea(-32, 14)
+  }
+
+  private createCrowdArea(cx: number, cz: number) {
+    // Open plaza / gathering zone to the left
+    const plaza = new THREE.Mesh(
+      new THREE.PlaneGeometry(22, 16),
+      new THREE.MeshStandardMaterial({ color: 0x4a4640, roughness: 0.88 })
+    )
+    plaza.rotation.x = -Math.PI / 2
+    plaza.position.set(cx, 0.02, cz)
+    plaza.receiveShadow = true
+    this.scene.add(plaza)
+
+    // Simple crowd silhouettes (low-poly people)
+    const bodyM = new THREE.MeshStandardMaterial({ color: 0x2a2a35, roughness: 0.8 })
+    const skinM = new THREE.MeshStandardMaterial({ color: 0xb09070, roughness: 0.7 })
+    for (let i = 0; i < 14; i++) {
+      const px = cx + (Math.random() - 0.5) * 14
+      const pz = cz + (Math.random() - 0.5) * 10
+      const h = 1.55 + Math.random() * 0.25
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, h * 0.45, 4, 6), bodyM)
+      body.position.set(px, h * 0.55, pz)
+      this.scene.add(body)
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), skinM)
+      head.position.set(px, h * 0.95, pz)
+      this.scene.add(head)
+    }
+
+    // Backdrop buildings around plaza so no void
+    for (let i = 0; i < 5; i++) {
+      addDetailedBuilding(this.scene, this.colliders, cx - 12, cz - 8 + i * 5, 5, 5, 3 + (i % 2), i)
+      addDetailedBuilding(this.scene, this.colliders, cx + 10, cz - 8 + i * 5, 5, 5, 4, i + 2)
+    }
+    addDetailedBuilding(this.scene, this.colliders, cx, cz - 12, 8, 5, 3, 1)
   }
 
 
 
   private createPoliceBlockade() {
-    // TWO police cars fully blocking the LEFT end of the street – face toward player (house)
-    // Cars angled across road at negative X
-    createPoliceSamand(this.scene, -16, 13.5, 0.55)
-    createPoliceSamand(this.scene, -15.5, 16.0, 0.85)
+    // RIGHT side of street – officers + cars block path, street continues behind them visually
+    // Cars parked across the road facing player (toward -X / house)
+    createPoliceSamand(this.scene, 18, 13.2, -Math.PI * 0.5 + 0.15)
+    createPoliceSamand(this.scene, 18.5, 16.0, -Math.PI * 0.5 - 0.2)
 
-    // Officers face the player (toward +X / house side) → rotY ≈ Math.PI / 2 or face center
-    createPoliceOfficer(this.scene, -13.5, 13.0, Math.PI * 0.5)
-    createPoliceOfficer(this.scene, -13.2, 15.5, Math.PI * 0.45)
-    createPoliceOfficer(this.scene, -14.0, 14.2, Math.PI * 0.55)
+    // Officers face the player (looking toward negative X ≈ rotY = -PI/2 or PI/2)
+    // Player comes from smaller X, so officers should face -X direction → rotation.y = Math.PI / 2
+    this.officers = [
+      createPoliceOfficer(this.scene, 15.5, 12.8, Math.PI * 0.5),
+      createPoliceOfficer(this.scene, 15.8, 14.5, Math.PI * 0.5),
+      createPoliceOfficer(this.scene, 15.2, 16.2, Math.PI * 0.55),
+      createPoliceOfficer(this.scene, 16.5, 15.0, Math.PI * 0.45),
+    ]
 
-    const s1 = createSirenLights(this.scene, -16, 1.8, 13.5)
-    const s2 = createSirenLights(this.scene, -15.5, 1.8, 16.0)
+    const s1 = createSirenLights(this.scene, 18, 1.8, 13.2)
+    const s2 = createSirenLights(this.scene, 18.5, 1.8, 16.0)
     this.sirenMeshes.push(...s1.meshes, ...s2.meshes)
     this.sirenLights.push(...s1.lights, ...s2.lights)
 
-    // Solid wall of colliders – cannot go around
-    this.addCollider(-16, 14.5, 5.5, 6.0)
-    this.addCollider(-18, 14.5, 3.0, 8.0)
-    this.addCollider(-14, 12.0, 3.0, 2.5)
-    this.addCollider(-14, 17.5, 3.0, 2.5)
+    // Collision ONLY around officers/cars – tight, no giant invisible wall
+    this.addCollider(18, 14.5, 3.2, 4.5)   // cars
+    this.addCollider(15.8, 14.5, 1.4, 3.2) // officers line
   }
-
 
 
   private createStars() {
@@ -608,30 +637,19 @@ export class Game {
 
 
 
+
   private createWorldBounds() {
-    // Close the map completely – no void visible
+    // Soft outer limits only – no giant walls visible on street
+    // Left is OPEN toward crowd; only far beyond plaza
     const walls: Array<[number, number, number, number]> = [
-      // Left blockade (behind police)
-      [-22, 14, 2.0, 14],
-      // Right end of street
-      [24, 14, 2.0, 14],
-      // Far behind opposite buildings
-      [0, 30, 50, 2.0],
-      // Behind house
-      [0, -9, 20, 1.5],
-      // Side walls full length
-      [-22, 0, 2.0, 20],
-      [24, 0, 2.0, 20],
+      [-48, 14, 2.0, 20],  // far past crowd
+      [28, 14, 2.0, 12],   // past police (soft)
+      [0, 32, 55, 1.5],    // behind north buildings
+      [0, -10, 25, 1.5],   // behind house
     ]
     for (const [x, z, hw, hd] of walls) {
       this.addCollider(x, z, hw, hd)
     }
-
-    // End-cap buildings so void is not visible at street ends
-    const mat = new THREE.MeshStandardMaterial({ color: 0x3a3230, roughness: 0.85 })
-    this.addBox(-24, 6, 14, 8, 12, 20, mat)
-    this.addBox(26, 6, 14, 8, 12, 20, mat)
-    this.addBox(0, 5, 32, 55, 10, 6, mat)
   }
 
 
@@ -667,6 +685,55 @@ export class Game {
       undefined,
       () => console.warn('Flag texture failed')
     )
+  }
+
+
+  private updatePoliceProximity() {
+    if (!this.officers.length) return
+    let minDist = Infinity
+    for (const o of this.officers) {
+      const dx = this.player.position.x - o.group.position.x
+      const dz = this.player.position.z - o.group.position.z
+      minDist = Math.min(minDist, Math.sqrt(dx * dx + dz * dz))
+    }
+    if (minDist < 6) {
+      this.showPoliceHint('ایست! این مسیر مسدود است')
+      if (!this.policeWarned && minDist < 4.5) {
+        this.policeWarned = true
+        audio.playPoliceWarn()
+      }
+    } else {
+      this.hidePoliceHint()
+      if (minDist > 10) this.policeWarned = false
+    }
+  }
+
+  private showPoliceHint(msg: string) {
+    if (!this.policeHint) {
+      this.policeHint = document.createElement('div')
+      this.policeHint.style.cssText = `
+        position:absolute;bottom:22%;left:50%;transform:translateX(-50%);
+        background:rgba(20,10,10,0.82);border:1px solid rgba(230,57,70,0.55);
+        border-radius:10px;padding:12px 24px;color:#f0e0e0;font-size:1rem;
+        letter-spacing:0.04em;pointer-events:none;z-index:170;text-align:center;
+      `
+      this.uiRoot.appendChild(this.policeHint)
+    }
+    this.policeHint.textContent = msg
+    this.policeHint.style.display = 'block'
+  }
+
+  private hidePoliceHint() {
+    if (this.policeHint) this.policeHint.style.display = 'none'
+  }
+
+  private getFootSurface(): FootSurface {
+    const { x, z } = this.player.position
+    if (z < 6.5 && Math.abs(x) < 6.5) return 'ceramic'
+    if (z > 6.8 && z < 10.2) return 'sidewalk'
+    if (z > 18.5 && z < 22) return 'sidewalk'
+    if (z >= 10.2 && z <= 18.5) return 'asphalt'
+    return 'concrete'
   }
 
   private addWall(x: number, y: number, z: number, w: number, h: number, d: number, mat: THREE.Material) {
@@ -705,6 +772,12 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05)
     const t = this.clock.elapsedTime
 
+    // Police idle + look-at
+    if (this.state === 'playing') {
+      for (const o of this.officers) updateOfficer(o, t, this.player.position)
+      this.updatePoliceProximity()
+    }
+
     // Siren animation
     if (this.sirenLights.length >= 2) {
       const pulse = (Math.sin(t * 8) + 1) * 0.5
@@ -721,7 +794,7 @@ export class Game {
     if (this.state === 'playing' && !this.orientation.isBlocking()) {
       this.player.update(dt)
       // Footsteps: wood indoors (z < 6.5), street outside
-      const surface = this.player.position.z < 6.8 ? 'wood' as const : 'street' as const
+      const surface = this.getFootSurface()
       audio.updateFootsteps(dt, this.player.isMoving, this.player.isRunning, surface)
 
       // Stand up from bed
