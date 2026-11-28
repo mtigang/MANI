@@ -4,18 +4,21 @@ import { PlayerController } from './systems/PlayerController'
 import { resolveAABB, AABB } from './systems/Collision'
 import { Door } from './systems/Door'
 import { createRealisticBed, createRealisticSofa, createRealisticTV, createRealisticWardrobe, createRealisticChair } from './systems/Furniture'
-import { createPoliceSamand, createPoliceOfficer, createSirenLights, updateOfficer, OfficerHandle } from './systems/Police'
 import { addDetailedBuilding } from './systems/Buildings'
+import { PoliceLine } from './systems/PoliceLine'
+import { FirstPersonBody } from './systems/FirstPersonBody'
 import { settings } from './core/Settings'
 import { detectDevice } from './core/Device'
 import { audio, FootSurface } from './core/AudioManager'
 import { saveSystem } from './core/SaveSystem'
+import { story } from './core/StoryManager'
 import { IntroScreen } from './ui/IntroScreen'
 import { MainMenu } from './ui/MainMenu'
 import { SettingsPanel } from './ui/SettingsPanel'
 import { InGameHUD } from './ui/InGameHUD'
 import { OrientationGate } from './ui/OrientationGate'
 import { IntroVideo } from './ui/IntroVideo'
+import { StoryUI } from './ui/StoryUI'
 import './ui/ui.css'
 
 type GameState = 'intro' | 'menu' | 'settings' | 'playing' | 'paused'
@@ -46,15 +49,21 @@ export class Game {
   private playerRadius = 0.38
   private device = detectDevice()
 
-  // Siren lights
   private sirenLights: THREE.PointLight[] = []
   private sirenMeshes: THREE.Mesh[] = []
-  private officers: OfficerHandle[] = []
-  private policeWarned = false
+  private policeLine: PoliceLine | null = null
   private policeHint: HTMLDivElement | null = null
   private renderingPaused = false
   private leftHouseSaved = false
   private streetSaved = false
+  private storyUI!: StoryUI
+  private fpBody: FirstPersonBody | null = null
+  private phonePos = new THREE.Vector3(-4.2, 0.72, -3.2)
+  private chapterLocked = false
+  private vehicles: { mesh: THREE.Group; speed: number; z: number }[] = []
+  private samanPos = new THREE.Vector3(-32, 0, 14)
+  private endingPlayed = false
+  private camShake = 0
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -104,6 +113,7 @@ export class Game {
     this.hud = new InGameHUD(this.uiRoot, () => this.togglePause())
     this.orientation = new OrientationGate(this.uiRoot)
     this.introVideo = new IntroVideo(this.uiRoot, () => this.afterIntroVideo(), () => { this.renderingPaused = true })
+    this.storyUI = new StoryUI(this.uiRoot, () => this.onPhoneClosed())
   }
 
   private goToMenu() {
@@ -144,12 +154,22 @@ export class Game {
     this.player.sitAt(-3.8, -3.7, Math.PI * 0.15)
     this.player.setGroundY(0)
     this.showStandHint()
+    story.startChapter()
+    // Phone on nightstand – open after short delay once standing, or allow E near phone
     saveSystem.save({
       checkpoint: 'start',
       position: { x: -3.8, y: 1.05, z: -3.7 },
       yaw: Math.PI * 0.15,
       completed: { introSeen: true, leftHouse: false, reachedStreet: false }
     })
+  }
+
+  private onPhoneClosed() {
+    story.onPhoneOpened()
+    if (!story.flags.innerVoicePlayed) {
+      story.onInnerVoice()
+      this.storyUI.showSubtitle('فقط می‌رم ببینم چه خبره...', 3500)
+    }
   }
 
   private continueGame() {
@@ -297,10 +317,12 @@ export class Game {
     this.scene.add(hemi)
 
     this.createRoom()
+    this.createCorridorAndStairs()
     this.createStreet()
     this.createDoor()
     this.createFlag()
     this.createPoliceBlockade()
+    this.spawnVehicles()
     this.createStars()
     this.createWorldBounds()
 
@@ -368,6 +390,33 @@ export class Game {
     // Bedroom
     createRealisticBed(this.scene, -3.8, -3.8)
     this.addCollider(-3.8, -3.8, 1.2, 0.85)
+    // Nightstand + phone (story prop)
+    const ns = new THREE.MeshStandardMaterial({ color: 0x4a3528, roughness: 0.55 })
+    this.addBox(-4.2, 0.3, -3.2, 0.45, 0.5, 0.4, ns)
+    const phone = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.02, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0x111114, emissive: 0x2244aa, emissiveIntensity: 0.4 })
+    )
+    phone.position.set(-4.2, 0.58, -3.2)
+    this.scene.add(phone)
+    this.phonePos.set(-4.2, 0.58, -3.2)
+    // Photo of Mani & Saman
+    const photo = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.35, 0.28),
+      new THREE.MeshStandardMaterial({ color: 0xc4b090, roughness: 0.6 })
+    )
+    photo.position.set(-5.0, 1.5, -5.7)
+    this.scene.add(photo)
+    // Chair with hoodie
+    createRealisticChair(this.scene, -2.0, -4.0, 0.5)
+    const hoodie = new THREE.Mesh(
+      new THREE.BoxGeometry(0.35, 0.15, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x4a5a3a, roughness: 0.8 })
+    )
+    hoodie.position.set(-2.0, 0.55, -4.0)
+    this.scene.add(hoodie)
+    // Backpack
+    this.addBox(-3.0, 0.35, -4.5, 0.35, 0.5, 0.25, new THREE.MeshStandardMaterial({ color: 0x2a3540 }))
     createRealisticWardrobe(this.scene, -5.2, -1.2)
     this.addCollider(-5.2, -1.2, 0.7, 0.4)
 
@@ -468,6 +517,50 @@ export class Game {
   }
 
 
+
+
+  private createCorridorAndStairs() {
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xd8d0c4, roughness: 0.88 })
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.75 })
+    const hall = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 8), floorMat)
+    hall.rotation.x = -Math.PI / 2
+    hall.position.set(0, 0.02, 10)
+    this.scene.add(hall)
+    this.addBox(-1.6, 1.5, 10, 0.15, 3.0, 8, wallMat)
+    this.addCollider(-1.6, 10, 0.2, 4.2)
+    this.addBox(1.6, 1.5, 10, 0.15, 3.0, 8, wallMat)
+    this.addCollider(1.6, 10, 0.2, 4.2)
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.6 })
+    this.addBox(-1.55, 1.1, 8.5, 0.08, 2.1, 0.9, doorMat)
+    this.addBox(1.55, 1.1, 11.5, 0.08, 2.1, 0.9, doorMat)
+    const cl = new THREE.PointLight(0xfff0d8, 0.9, 8, 1.5)
+    cl.position.set(0, 2.8, 9)
+    this.scene.add(cl)
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0x6a6055, roughness: 0.7 })
+    for (let i = 0; i < 6; i++) {
+      this.addBox(0, 0.08 + i * 0.05, 13.2 + i * 0.35, 2.8, 0.1, 0.4, stepMat)
+    }
+    this.addBox(-1.5, 1.5, 15.2, 0.2, 3.0, 0.2, wallMat)
+    this.addBox(1.5, 1.5, 15.2, 0.2, 3.0, 0.2, wallMat)
+    const yard = new THREE.Mesh(
+      new THREE.PlaneGeometry(14, 10),
+      new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.9 })
+    )
+    yard.rotation.x = -Math.PI / 2
+    yard.position.set(0, 0.01, 18)
+    this.scene.add(yard)
+    addDetailedBuilding(this.scene, this.colliders, 9.5, 2.0, 6, 7, 2, 2)
+    addDetailedBuilding(this.scene, this.colliders, 9.5, -5.0, 6, 6, 3, 4)
+    const metal = new THREE.MeshStandardMaterial({ color: 0x3a3a40, metalness: 0.6, roughness: 0.35 })
+    this.addBox(5.5, 1.1, 6.5, 0.1, 2.2, 2.5, metal)
+    this.addBox(3.5, 0.4, 8.0, 0.6, 0.8, 0.6, new THREE.MeshStandardMaterial({ color: 0x2a4a2a }))
+    const bike = new THREE.Group()
+    bike.position.set(-4.5, 0, 8.5)
+    const bikeBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 0.4), new THREE.MeshStandardMaterial({ color: 0x1a1a22 }))
+    bikeBody.position.y = 0.5
+    bike.add(bikeBody)
+    this.scene.add(bike)
+  }
 
   private createStreet() {
     // Continuous ground plane – no holes
@@ -583,29 +676,31 @@ export class Game {
 
 
 
+
+
+  private spawnVehicles() {
+    const makeCar = (color: number, x: number, z: number, speed: number) => {
+      const g = new THREE.Group()
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(4.2, 1.2, 1.8),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 })
+      )
+      body.position.y = 0.7
+      g.add(body)
+      g.position.set(x, 0, z)
+      this.scene.add(g)
+      this.vehicles.push({ mesh: g, speed, z })
+    }
+    makeCar(0xcc2222, -20, 14.5, 8)  // fire-ish red
+    makeCar(0x1a4a2a, 25, 13.5, -7) // police green
+  }
+
   private createPoliceBlockade() {
-    // RIGHT side of street – officers + cars block path, street continues behind them visually
-    // Cars parked across the road facing player (toward -X / house)
-    createPoliceSamand(this.scene, 18, 13.2, -Math.PI * 0.5 + 0.15)
-    createPoliceSamand(this.scene, 18.5, 16.0, -Math.PI * 0.5 - 0.2)
-
-    // Officers face the player (looking toward negative X ≈ rotY = -PI/2 or PI/2)
-    // Player comes from smaller X, so officers should face -X direction → rotation.y = Math.PI / 2
-    this.officers = [
-      createPoliceOfficer(this.scene, 15.5, 12.8, Math.PI * 0.5),
-      createPoliceOfficer(this.scene, 15.8, 14.5, Math.PI * 0.5),
-      createPoliceOfficer(this.scene, 15.2, 16.2, Math.PI * 0.55),
-      createPoliceOfficer(this.scene, 16.5, 15.0, Math.PI * 0.45),
-    ]
-
-    const s1 = createSirenLights(this.scene, 18, 1.8, 13.2)
-    const s2 = createSirenLights(this.scene, 18.5, 1.8, 16.0)
-    this.sirenMeshes.push(...s1.meshes, ...s2.meshes)
-    this.sirenLights.push(...s1.lights, ...s2.lights)
-
-    // Collision ONLY around officers/cars – tight, no giant invisible wall
-    this.addCollider(18, 14.5, 3.2, 4.5)   // cars
-    this.addCollider(15.8, 14.5, 1.4, 3.2) // officers line
+    // Full-width line on RIGHT side – physical officers only, street continues behind
+    this.policeLine = new PoliceLine(this.scene, 17, 14)
+    this.policeLine.build(this.colliders)
+    this.sirenMeshes = this.policeLine.getSirenMeshes()
+    this.sirenLights = this.policeLine.getSirenLights()
   }
 
 
@@ -688,26 +783,6 @@ export class Game {
   }
 
 
-  private updatePoliceProximity() {
-    if (!this.officers.length) return
-    let minDist = Infinity
-    for (const o of this.officers) {
-      const dx = this.player.position.x - o.group.position.x
-      const dz = this.player.position.z - o.group.position.z
-      minDist = Math.min(minDist, Math.sqrt(dx * dx + dz * dz))
-    }
-    if (minDist < 6) {
-      this.showPoliceHint('ایست! این مسیر مسدود است')
-      if (!this.policeWarned && minDist < 4.5) {
-        this.policeWarned = true
-        audio.playPoliceWarn()
-      }
-    } else {
-      this.hidePoliceHint()
-      if (minDist > 10) this.policeWarned = false
-    }
-  }
-
   private showPoliceHint(msg: string) {
     if (!this.policeHint) {
       this.policeHint = document.createElement('div')
@@ -772,46 +847,54 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05)
     const t = this.clock.elapsedTime
 
-    // Police idle + look-at
-    if (this.state === 'playing') {
-      for (const o of this.officers) updateOfficer(o, t, this.player.position)
-      this.updatePoliceProximity()
-    }
-
     // Siren animation
     if (this.sirenLights.length >= 2) {
       const pulse = (Math.sin(t * 8) + 1) * 0.5
-      this.sirenLights[0].intensity = 2.5 + pulse * 4.5
-      this.sirenLights[1].intensity = 2.5 + (1 - pulse) * 4.5
-      if (this.sirenMeshes[0]) {
-        (this.sirenMeshes[0].material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + pulse * 2.0
+      for (let i = 0; i < this.sirenLights.length; i++) {
+        this.sirenLights[i].intensity = 2.5 + ((i % 2 === 0) ? pulse : 1 - pulse) * 4.5
       }
-      if (this.sirenMeshes[1]) {
-        (this.sirenMeshes[1].material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + (1 - pulse) * 2.0
-      }
+      this.sirenMeshes.forEach((m, i) => {
+        (m.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + ((i % 2 === 0) ? pulse : 1 - pulse) * 2.0
+      })
     }
 
-    if (this.state === 'playing' && !this.orientation.isBlocking()) {
-      this.player.update(dt)
-      // Footsteps: wood indoors (z < 6.5), street outside
-      const surface = this.getFootSurface()
-      audio.updateFootsteps(dt, this.player.isMoving, this.player.isRunning, surface)
+    // Moving vehicles
+    for (const v of this.vehicles) {
+      v.mesh.position.x += v.speed * dt
+      if (v.mesh.position.x > 40) v.mesh.position.x = -40
+      if (v.mesh.position.x < -45) v.mesh.position.x = 35
+    }
 
-      // Stand up from bed
+    if (this.state === 'playing' && !this.orientation.isBlocking() && !this.chapterLocked) {
+      if (!this.storyUI.isPhoneOpen()) {
+        this.player.update(dt)
+      }
+
+      const surface = this.getFootSurface()
+      audio.updateFootsteps(dt, this.player.isMoving && !this.player.sitting, this.player.isRunning, surface)
+
       if (this.player.sitting) {
         if (this.input.state.jump) {
           this.player.standUp()
           this.hideStandHint()
           audio.playStand()
+          // Prompt to check phone
+          setTimeout(() => {
+            if (!story.flags.phoneSeen) this.storyUI.showPhone()
+          }, 800)
         }
       } else {
         resolveAABB(this.player.position, this.playerRadius, this.colliders)
         const doorBox = this.door.getCollisionAABB()
         if (doorBox) resolveAABB(this.player.position, this.playerRadius, [doorBox])
-
         this.door.update(dt)
 
-        if (this.door.canInteract(this.player.position)) {
+        // Phone interact if not seen
+        const pd = this.player.position.distanceTo(this.phonePos)
+        if (!story.flags.phoneSeen && pd < 1.8) {
+          this.showInteractHint('E  ·  دیدن پیام')
+          if (this.input.consumeInteract()) this.storyUI.showPhone()
+        } else if (this.door.canInteract(this.player.position)) {
           const label = this.door.isOpened ? 'E  ·  بستن در' : 'E  ·  باز کردن در'
           this.showInteractHint(label)
           if (this.input.consumeInteract()) { this.door.toggle(); audio.playDoor() }
@@ -820,9 +903,54 @@ export class Game {
         }
       }
 
-      // Auto-save checkpoints
+      // Story progression by position
       const pz = this.player.position.z
       const px = this.player.position.x
+      if (pz > 6.5) story.onLeftRoom()
+      if (pz > 16) story.onLeftBuilding()
+      if (pz > 10 && Math.abs(px) > 2) story.onEnteredStreet()
+      if (px > 10) story.onNearPolice()
+      if (px < -8) story.onGoLeftPath()
+      if (px < -22) story.onNearCrowd()
+
+      // Second message from Saman on left path
+      if (story.flags.samanMsgShown && story.stage === 'go_left') {
+        // one-shot subtitle via stage flag reuse – handled once
+      }
+      if (px < -10 && story.flags.samanMsgShown && !(this as any)._samanSmsShown) {
+        ;(this as any)._samanSmsShown = true
+        this.storyUI.showSubtitle('سامان: من نزدیک کلانتری‌ام. رسیدی بهم خبر بده.', 4500)
+      }
+
+      // Meet Saman
+      if (!this.endingPlayed && px < -28 && Math.abs(pz - 14) < 6) {
+        this.endingPlayed = true
+        this.playEnding()
+      }
+
+      // Police line AI
+      if (this.policeLine) {
+        this.policeLine.update(
+          t,
+          this.player.position,
+          (msg) => this.showPoliceHint(msg),
+          () => this.onPoliceShot()
+        )
+      }
+
+      // FP body
+      if (!this.fpBody) this.fpBody = new FirstPersonBody(this.camera)
+      this.fpBody.update(dt, this.player.isMoving, this.player.isRunning)
+
+      // Camera shake from shot
+      this.player.applyToCamera(this.camera)
+      if (this.camShake > 0) {
+        this.camera.position.x += (Math.random() - 0.5) * this.camShake * 0.15
+        this.camera.position.y += (Math.random() - 0.5) * this.camShake * 0.1
+        this.camShake = Math.max(0, this.camShake - dt * 4)
+      }
+
+      // Saves
       if (!this.leftHouseSaved && pz > 7.0) {
         this.leftHouseSaved = true
         saveSystem.save({
@@ -841,8 +969,6 @@ export class Game {
           completed: { introSeen: true, leftHouse: true, reachedStreet: true }
         })
       }
-
-      this.player.applyToCamera(this.camera)
 
       if (this.input.consumePause()) this.togglePause()
     } else if (this.state === 'intro' || this.state === 'menu' || this.state === 'settings') {
@@ -874,6 +1000,7 @@ export class Game {
     this.settingsPanel.destroy()
     this.hud.destroy()
     this.orientation.destroy()
+    this.storyUI?.destroy()
     this.introVideo.destroy()
     this.hidePauseOverlay()
     this.hideInteractHint()
